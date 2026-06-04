@@ -1,0 +1,11 @@
+# Detectron2 is intentionally separated from requirements.txt because install
+# support is platform-, Python-, PyTorch-, and CUDA/MPS-dependent.
+#
+# Recommended:
+#   1. Use Python 3.10 or 3.11.
+#   2. Install torch/torchvision first.
+#   3. Install Detectron2 using the official instructions for your platform:
+#      https://detectron2.readthedocs.io/en/latest/tutorials/install.html
+#
+# Example source install, when compatible:
+# git+https://github.com/facebookresearch/detectron2.git

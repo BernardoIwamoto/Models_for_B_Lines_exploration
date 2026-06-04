@@ -1,0 +1,32 @@
+# Core research environment for Polygon YOLO experiments.
+#
+# Recommended Python: 3.10 or 3.11.
+# The current workspace venv is Python 3.13, which is not ideal for PyTorch
+# and Detectron2 compatibility.
+
+numpy>=1.26,<3
+pandas>=2.2
+matplotlib>=3.8
+seaborn>=0.13
+tqdm>=4.66
+pyyaml>=6.0
+opencv-python>=4.9
+pillow>=10.0
+scipy>=1.11
+scikit-learn>=1.4
+shapely>=2.0
+
+# YOLO11 baseline and codebase to inspect/extend.
+ultralytics>=8.3
+
+# PyTorch stack.
+# Install platform-specific wheels from https://pytorch.org/get-started/locally/
+# if pip cannot resolve the right build automatically.
+torch>=2.3
+torchvision>=0.18
+torchaudio>=2.3
+
+# Experiment tracking and notebook support.
+tensorboard>=2.16
+ipykernel>=6.29
+jupyterlab>=4.2
