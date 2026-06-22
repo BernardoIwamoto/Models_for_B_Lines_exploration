@@ -219,3 +219,5 @@ __marimo__/
 
 
 Bernardo/venv/
+Bernardo/.venv/
+Bernardo/.venv_detectron311/
