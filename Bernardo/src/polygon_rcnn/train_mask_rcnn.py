@@ -1,6 +1,7 @@
 from detectron2.engine import DefaultTrainer
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
+import torch
 
 import sys
 from pathlib import Path
@@ -14,7 +15,7 @@ def main():
     register_blines()
 
     cfg = get_cfg()
-    cfg.MODEL.DEVICE = "mps"
+    cfg.MODEL.DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
 
     cfg.merge_from_file(
         model_zoo.get_config_file(
@@ -25,7 +26,7 @@ def main():
     cfg.DATASETS.TRAIN = ("blines_train",)
     cfg.DATASETS.TEST = ("blines_val",)
 
-    cfg.DATALOADER.NUM_WORKERS = 2
+    cfg.DATALOADER.NUM_WORKERS = 0
 
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
         "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
@@ -33,7 +34,7 @@ def main():
 
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
 
-    cfg.SOLVER.IMS_PER_BATCH = 2
+    cfg.SOLVER.IMS_PER_BATCH = 4
 
     cfg.SOLVER.BASE_LR = 0.00025
 
