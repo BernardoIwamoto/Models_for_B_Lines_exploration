@@ -1,11 +1,6 @@
 import sys
 from pathlib import Path
 
-SRC_ROOT = Path(__file__).resolve().parents[1]
-
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
-
 import cv2
 import numpy as np
 
@@ -14,7 +9,7 @@ from detectron2.engine import DefaultPredictor
 from detectron2 import model_zoo
 from detectron2.data import DatasetCatalog
 
-from polygon_rcnn.register_dataset import register_blines
+from src.polygon_rcnn.register_dataset import register_blines
 
 MODEL_PATH = "output_maskrcnn/model_final.pth"
 

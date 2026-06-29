@@ -9,9 +9,7 @@ from detectron2.evaluation import COCOEvaluator
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-
-from polygon_rcnn.register_dataset import register_blines
+from src.polygon_rcnn.register_dataset import register_blines
 
 def main():
 
@@ -59,14 +57,14 @@ def main():
 if __name__ == "__main__":
     class PolygonTrainer(DefaultTrainer):
 
-    @classmethod
-    def build_evaluator(cls, cfg, dataset_name, output_folder=None):
+        @classmethod
+        def build_evaluator(cls, cfg, dataset_name, output_folder=None):
 
-        if output_folder is None:
-            output_folder = f"{cfg.OUTPUT_DIR}/inference"
+            if output_folder is None:
+                output_folder = f"{cfg.OUTPUT_DIR}/inference"
 
-        return COCOEvaluator(
-            dataset_name,
-            output_dir=output_folder,
-        )
+            return COCOEvaluator(
+                dataset_name,
+                output_dir=output_folder,
+            )
     main()

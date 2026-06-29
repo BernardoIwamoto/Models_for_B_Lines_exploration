@@ -1,6 +1,6 @@
 from detectron2.data import DatasetCatalog
 
-from register_dataset import register_blines
+from src.polygon_rcnn.register_dataset import register_blines
 
 
 register_blines()

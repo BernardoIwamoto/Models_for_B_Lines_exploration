@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from detectron2.data import DatasetCatalog, MetadataCatalog
 from detectron2.utils.visualizer import Visualizer
 
-from register_dataset import register_blines
+from src.polygon_rcnn.register_dataset import register_blines
 
 
 register_blines()

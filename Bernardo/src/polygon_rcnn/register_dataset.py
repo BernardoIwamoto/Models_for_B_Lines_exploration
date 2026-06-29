@@ -2,7 +2,7 @@ from pathlib import Path
 
 from detectron2.data import DatasetCatalog, MetadataCatalog
 
-from dataset import yolo_polygon_to_detectron
+from src.polygon_rcnn.dataset import yolo_polygon_to_detectron
 
 
 DATA_ROOT = Path("data")
