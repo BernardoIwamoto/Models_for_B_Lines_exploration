@@ -3,6 +3,9 @@ from detectron2.config import get_cfg
 from detectron2 import model_zoo
 import torch
 
+from detectron2.engine import DefaultTrainer
+from detectron2.evaluation import COCOEvaluator
+
 import sys
 from pathlib import Path
 
@@ -42,11 +45,11 @@ def main():
 
     cfg.SOLVER.STEPS = []
 
-    cfg.TEST.EVAL_PERIOD = 200
+    cfg.TEST.EVAL_PERIOD = 100
 
     cfg.OUTPUT_DIR = "./output_maskrcnn"
 
-    trainer = DefaultTrainer(cfg)
+    trainer = PolygonTrainer(cfg)
 
     trainer.resume_or_load(resume=False)
 
@@ -54,4 +57,16 @@ def main():
 
 
 if __name__ == "__main__":
+    class PolygonTrainer(DefaultTrainer):
+
+    @classmethod
+    def build_evaluator(cls, cfg, dataset_name, output_folder=None):
+
+        if output_folder is None:
+            output_folder = f"{cfg.OUTPUT_DIR}/inference"
+
+        return COCOEvaluator(
+            dataset_name,
+            output_dir=output_folder,
+        )
     main()

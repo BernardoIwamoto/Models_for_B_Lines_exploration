@@ -19,6 +19,7 @@ def register_blines():
     )
 
     MetadataCatalog.get("blines_train").thing_classes = ["bline"]
+    MetadataCatalog.get("blines_train").evaluator_type = "coco"
 
     DatasetCatalog.register(
         "blines_val",
@@ -29,3 +30,4 @@ def register_blines():
     )
 
     MetadataCatalog.get("blines_val").thing_classes = ["bline"]
+    MetadataCatalog.get("blines_val").evaluator_type = "coco"
