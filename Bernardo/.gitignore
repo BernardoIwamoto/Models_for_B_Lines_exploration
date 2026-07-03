@@ -18,7 +18,6 @@ wandb/
 # Local data and generated outputs
 data/
 datasets/
-outputs/
 .ultralytics/
 .env
 
