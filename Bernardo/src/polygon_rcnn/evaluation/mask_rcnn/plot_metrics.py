@@ -157,22 +157,48 @@ plt.savefig(OUTPUT / "iou_cdf.png")
 
 plt.close()
 
+thresholds = np.linspace(0.0,1.0,101)
+
+precisions=[]
+recalls=[]
+
+for t in thresholds:
+
+    pred = df[df["score"]>=t]
+
+    if len(pred)==0:
+        continue
+
+    tp = pred["TP"].sum()
+    fp = pred["FP"].sum()
+
+    fn = len(df)-tp
+
+    precision = tp/(tp+fp+1e-8)
+
+    recall = tp/(tp+fn+1e-8)
+
+    precisions.append(precision)
+    recalls.append(recall)
+
 plt.figure(figsize=(6,6))
 
-plt.scatter(
-    df["Recall"],
-    df["Precision"],
-    alpha=0.7
+plt.plot(
+    recalls,
+    precisions,
+    linewidth=2,
 )
 
 plt.xlabel("Recall")
 plt.ylabel("Precision")
 
-plt.title("Precision vs Recall")
+plt.title("Precision-Recall Curve")
 
 plt.grid(True)
 
-plt.savefig(OUTPUT / "precision_recall.png")
+plt.savefig(
+    OUTPUT/"precision_recall_curve.png"
+)
 
 plt.close()
 
@@ -245,6 +271,56 @@ print("Correlation Area")
 print(
     df["GtArea"].corr(df["PredArea"])
 )
+
+thresholds=np.arange(0.5,1.0,0.05)
+
+recalls=[]
+
+ious=df["IoU"].values
+
+for t in thresholds:
+
+    recalls.append(
+        np.mean(
+            ious>=t
+        )
+    )
+
+plt.figure(figsize=(7,5))
+
+plt.plot(
+    thresholds,
+    recalls,
+    marker="o"
+)
+
+plt.xlabel("IoU Threshold")
+plt.ylabel("Recall")
+
+plt.title("Recall vs IoU")
+
+plt.grid(True)
+
+plt.savefig(
+    OUTPUT/"recall_vs_iou.png"
+)
+
+plt.close()
+
+import json
+
+with open(
+    "output_maskrcnn/coco_eval/results.json"
+) as f:
+    coco = json.load(f)
+
+summary["COCO"] = coco
+
+with open(
+    OUTPUT/"summary.json",
+    "w",
+) as f:
+    json.dump(summary, f, indent=4)
 
 print("Finished.")
 
