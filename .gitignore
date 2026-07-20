@@ -217,7 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+venv/
+.venv/
+.venv_detectron311/
 
-Bernardo/venv/
-Bernardo/.venv/
-Bernardo/.venv_detectron311/
+*.pth
+output_maskrcnn/
