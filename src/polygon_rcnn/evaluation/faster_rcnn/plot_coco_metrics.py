@@ -4,7 +4,7 @@ import json
 from src.polygon_rcnn.evaluation.common.coco_threshold_plots import plot_coco_threshold_analysis
 
 
-COCO_DIR = Path("output_maskrcnn/coco_eval")
+COCO_DIR = Path("output_faster_rcnn/coco_eval")
 
 RESULTS_JSON = COCO_DIR / "results.json"
 

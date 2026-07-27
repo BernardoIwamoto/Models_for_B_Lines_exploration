@@ -17,13 +17,13 @@ from src.polygon_rcnn.register_dataset import register_blines
 import torch
 
 
-MODEL_PATH = "output_maskrcnn/model_final.pth"
+MODEL_PATH = "output_faster_rcnn/model_final.pth"
 
 DATASET = "blines_val"
 
-OUTPUT_DIR = Path("output_maskrcnn/coco_eval")
+OUTPUT_DIR = Path("output_faster_rcnn/coco_eval")
 
-TASK = "segm"
+TASK = "bbox"
 
 DEVICE = (
     "cuda"
@@ -42,7 +42,7 @@ cfg.MODEL.DEVICE = DEVICE
 
 cfg.merge_from_file(
     model_zoo.get_config_file(
-        "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
+        "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
     )
 )
 
@@ -73,11 +73,9 @@ results = DefaultTrainer.test(
 with open(OUTPUT_DIR / "results.json", "w") as f:
     json.dump(results, f, indent=4)
 
-# COCOEvaluator builds its own COCOeval object internally but discards it once it
-# derives the summary scalars above (no public attribute exposes it in this
-# detectron2 version). We rebuild it from the two files COCOEvaluator already wrote
-# to OUTPUT_DIR, which also keeps Mask R-CNN, Faster R-CNN and YOLO on the exact
-# same evaluation code path.
+# Same rationale as mask_rcnn/evaluate_coco.py: rebuild COCOeval from the files
+# COCOEvaluator already wrote to disk instead of reaching into its (now absent)
+# internal state, keeping every model on the exact same evaluation code path.
 coco_gt = COCO(str(OUTPUT_DIR / "blines_val_coco_format.json"))
 coco_dt = coco_gt.loadRes(str(OUTPUT_DIR / "coco_instances_results.json"))
 

@@ -223,3 +223,9 @@ venv/
 
 *.pth
 output_maskrcnn/
+output_faster_rcnn/
+output_yolo_detect/
+
+# Derived bbox-format YOLO dataset (symlinks + regenerated labels); regenerate with
+# src/polygon_yolo/detect/convert_to_detect.py instead of tracking it.
+data/yolo_detect/

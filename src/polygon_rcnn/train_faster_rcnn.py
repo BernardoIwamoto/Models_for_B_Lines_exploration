@@ -5,9 +5,6 @@ from detectron2.data import build_detection_test_loader, DatasetMapper
 from detectron2.evaluation import COCOEvaluator
 import torch
 
-import sys
-from pathlib import Path
-
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
 
@@ -21,7 +18,7 @@ def main():
 
     cfg.merge_from_file(
         model_zoo.get_config_file(
-            "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
+            "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
         )
     )
 
@@ -31,11 +28,13 @@ def main():
     cfg.DATALOADER.NUM_WORKERS = 0
 
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
-        "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
+        "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
     )
 
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
 
+    # Same optimization budget as train_mask_rcnn.py (same protocol, same dataset,
+    # so segm-branch cost is the only deliberate difference between the two runs).
     cfg.SOLVER.IMS_PER_BATCH = 4
 
     cfg.SOLVER.BASE_LR = 0.00025
@@ -46,9 +45,9 @@ def main():
 
     cfg.TEST.EVAL_PERIOD = 100
 
-    cfg.OUTPUT_DIR = "./output_maskrcnn"
+    cfg.OUTPUT_DIR = "./output_faster_rcnn"
 
-    trainer = PolygonTrainer(cfg)
+    trainer = PolygonDetectionTrainer(cfg)
 
     trainer.resume_or_load(resume=False)
 
@@ -56,7 +55,7 @@ def main():
 
 
 if __name__ == "__main__":
-    class PolygonTrainer(DefaultTrainer):
+    class PolygonDetectionTrainer(DefaultTrainer):
 
         @classmethod
         def build_evaluator(cls, cfg, dataset_name, output_folder=None):
