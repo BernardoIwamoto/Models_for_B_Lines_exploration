@@ -5,6 +5,8 @@ from detectron2.data import build_detection_test_loader, DatasetMapper
 from detectron2.evaluation import COCOEvaluator
 import torch
 
+from pathlib import Path
+
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
 
@@ -47,9 +49,18 @@ def main():
 
     cfg.OUTPUT_DIR = "./output_faster_rcnn"
 
+    resume = False
+
+    # See train_mask_rcnn.py: Detectron2's metrics.json is append-only, so a fresh
+    # (non-resumed) run must clear it first or its log gets mixed with older runs.
+    if not resume:
+        metrics_file = Path(cfg.OUTPUT_DIR) / "metrics.json"
+        if metrics_file.exists():
+            metrics_file.unlink()
+
     trainer = PolygonDetectionTrainer(cfg)
 
-    trainer.resume_or_load(resume=False)
+    trainer.resume_or_load(resume=resume)
 
     trainer.train()
 

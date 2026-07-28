@@ -48,9 +48,19 @@ def main():
 
     cfg.OUTPUT_DIR = "./output_maskrcnn"
 
+    resume = False
+
+    # Detectron2's metrics.json is opened in append mode, so restarting a fresh
+    # (non-resumed) run here would otherwise just concatenate its log after whatever
+    # a previous run already wrote, silently mixing curves from unrelated runs.
+    if not resume:
+        metrics_file = Path(cfg.OUTPUT_DIR) / "metrics.json"
+        if metrics_file.exists():
+            metrics_file.unlink()
+
     trainer = PolygonTrainer(cfg)
 
-    trainer.resume_or_load(resume=False)
+    trainer.resume_or_load(resume=resume)
 
     trainer.train()
 
