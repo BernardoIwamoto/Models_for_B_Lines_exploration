@@ -11,7 +11,7 @@ from detectron2.data import DatasetCatalog
 from src.polygon_rcnn.register_dataset import register_blines
 
 
-MODEL_PATH = "output_yolo_detect/train/weights/best.pt"
+MODEL_PATH = "runs/detect/output_yolo_detect/train/weights/best.pt"
 
 # Ground-truth COCO json produced by evaluate_coco.py in the Faster R-CNN pipeline,
 # built from the same blines_val dataset dicts (same image order => same image_id,
