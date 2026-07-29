@@ -3,7 +3,9 @@ from ultralytics import YOLO
 
 DATA_YAML = "data/yolo_detect/data.yaml"
 
-MODEL = "yolo11n.pt"
+# Local, repo-committed checkpoint: Ultralytics' auto-download by bare name
+# ("yolo11n.pt") needs outbound internet, which the training host may not have.
+MODEL = "weights/yolo11n.pt"
 
 # Mask/Faster R-CNN train for MAX_ITER=2000 at IMS_PER_BATCH=4 (~256 train images),
 # i.e. ~2000*4/256 ≈ 31 passes over the training set. EPOCHS is set to match that same
