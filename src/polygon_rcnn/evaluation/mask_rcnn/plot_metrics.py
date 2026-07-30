@@ -16,7 +16,12 @@ df = pd.read_csv(CSV)
 # Estatísticas
 # ============================
 
-summary = {}
+summary_path = OUTPUT / "summary.json"
+
+# Load whatever plot_coco_metrics.py already wrote here (e.g. coco_threshold_analysis)
+# instead of starting fresh, so running these two scripts in either order doesn't
+# silently wipe the other one's keys.
+summary = json.load(open(summary_path)) if summary_path.exists() else {}
 
 for col in [
     "IoU",
@@ -34,9 +39,6 @@ for col in [
         "min": float(df[col].min()),
         "max": float(df[col].max()),
     }
-
-with open(OUTPUT / "summary.json", "w") as f:
-    json.dump(summary, f, indent=4)
 
 # ============================
 # Histograma IoU

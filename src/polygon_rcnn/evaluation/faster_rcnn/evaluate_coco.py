@@ -17,7 +17,7 @@ from src.polygon_rcnn.register_dataset import register_blines
 import torch
 
 
-MODEL_PATH = "output_faster_rcnn/model_final.pth"
+MODEL_PATH = "output_faster_rcnn/model_best.pth"
 
 DATASET = "blines_val"
 

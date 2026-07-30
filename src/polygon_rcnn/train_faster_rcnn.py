@@ -47,6 +47,10 @@ def main():
 
     cfg.TEST.EVAL_PERIOD = 100
 
+    # See train_mask_rcnn.py: without this, only model_final.pth would ever be saved,
+    # and we already have evidence the last iteration isn't the best checkpoint.
+    cfg.SOLVER.CHECKPOINT_PERIOD = 100
+
     cfg.OUTPUT_DIR = "./output_faster_rcnn"
 
     resume = False

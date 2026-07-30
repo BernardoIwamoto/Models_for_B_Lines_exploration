@@ -46,6 +46,12 @@ def main():
 
     cfg.TEST.EVAL_PERIOD = 100
 
+    # Default (5000) exceeds MAX_ITER, so only model_final.pth would ever get saved --
+    # validation AP already showed the best checkpoint isn't the last one (peaked at
+    # iter 1699, dropped by ~6.5 AP by iter 2000), so we need the intermediate ones to
+    # pick from (see evaluation/common/select_best_checkpoint.py).
+    cfg.SOLVER.CHECKPOINT_PERIOD = 100
+
     cfg.OUTPUT_DIR = "./output_maskrcnn"
 
     resume = False

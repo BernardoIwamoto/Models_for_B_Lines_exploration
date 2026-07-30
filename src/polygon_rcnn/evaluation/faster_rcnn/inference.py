@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import cv2
@@ -11,17 +10,17 @@ from detectron2.data import DatasetCatalog
 
 from src.polygon_rcnn.register_dataset import register_blines
 
-MODEL_PATH = "output_maskrcnn/model_best.pth"
+
+MODEL_PATH = "output_faster_rcnn/model_best.pth"
 
 TEST_DATASET = "blines_val"
 
-OUTPUT_DIR = "results_maskrcnn"
+OUTPUT_DIR = "results_faster_rcnn"
 
 SCORE_THRESHOLD = 0.50
 
 DEVICE = "mps"      # use "cpu" se necessário
 
-# Predictor
 
 def build_predictor():
 
@@ -31,7 +30,7 @@ def build_predictor():
 
     cfg.merge_from_file(
         model_zoo.get_config_file(
-            "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
+            "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
         )
     )
 
@@ -42,6 +41,7 @@ def build_predictor():
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = SCORE_THRESHOLD
 
     return DefaultPredictor(cfg)
+
 
 def main():
 
@@ -64,13 +64,13 @@ def main():
 
         vis = image.copy()
 
-        # Ground Truth (VERDe)
+        # Ground Truth (verde)
 
         for ann in sample["annotations"]:
 
             polygon = np.array(
                 ann["segmentation"][0],
-                dtype=np.int32
+                dtype=np.int32,
             ).reshape(-1, 2)
 
             cv2.polylines(
@@ -81,52 +81,33 @@ def main():
                 2,
             )
 
-        # Predições
+        # Predições -- bounding box (vermelho), sem máscara (Faster R-CNN não tem mask head)
 
-        if len(instances) > 0:
+        boxes = instances.pred_boxes.tensor.numpy()
 
-            boxes = instances.pred_boxes.tensor.numpy()
+        scores = instances.scores.numpy()
 
-            scores = instances.scores.numpy()
+        for box, score in zip(boxes, scores):
 
-            masks = instances.pred_masks.numpy()
+            x1, y1, x2, y2 = box.astype(int)
 
-            for __,  score, mask in zip(boxes, scores, masks): #boxes no lugar de __
+            cv2.rectangle(
+                vis,
+                (x1, y1),
+                (x2, y2),
+                (0, 0, 255),
+                2,
+            )
 
-                # Máscara (vermelho)
-                colored = np.zeros_like(vis)
-
-                colored[:, :, 2] = mask.astype(np.uint8) * 255
-
-                vis = cv2.addWeighted(
-                    vis,
-                    1.0,
-                    colored,
-                    0.35,
-                    0,
-                )
-
-                # # Bounding Box (azul)
-                # x1, y1, x2, y2 = box.astype(int)
-
-                # cv2.rectangle(
-                #     vis,
-                #     (x1, y1),
-                #     (x2, y2),
-                #     (255, 0, 0),
-                #     2,
-                # )
-
-                # # Score
-                # cv2.putText(
-                #     vis,
-                #     f"{score:.3f}",
-                #     (x1, max(20, y1 - 5)),
-                #     cv2.FONT_HERSHEY_SIMPLEX,
-                #     0.6,
-                #     (255, 255, 255),
-                #     2,
-                # )
+            cv2.putText(
+                vis,
+                f"{score:.3f}",
+                (x1, max(20, y1 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 255),
+                2,
+            )
 
         out_name = Path(sample["file_name"]).name
 
