@@ -3,6 +3,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import torch
 
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
@@ -19,7 +20,13 @@ OUTPUT_DIR = "results_maskrcnn"
 
 SCORE_THRESHOLD = 0.50
 
-DEVICE = "mps"      # use "cpu" se necessário
+DEVICE = (
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
+    else "cpu"
+)
 
 # Predictor
 
