@@ -104,6 +104,12 @@ if __name__ == "__main__":
             return COCOEvaluator(
                 dataset_name,
                 output_dir=output_folder,
+                # kpt_oks_sigmas is only read from cfg.TEST.KEYPOINT_OKS_SIGMAS when a
+                # (deprecated) CfgNode is passed as `tasks`; passing it explicitly here
+                # is the only way it actually reaches pycocotools. Without it, the
+                # periodic mid-training eval crashes on the shape mismatch (COCO's 17
+                # default sigmas vs our 4 keypoints).
+                kpt_oks_sigmas=cfg.TEST.KEYPOINT_OKS_SIGMAS,
             )
 
         def build_hooks(self):

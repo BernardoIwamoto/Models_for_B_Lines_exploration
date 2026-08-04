@@ -61,6 +61,12 @@ predictor = DefaultPredictor(cfg)
 evaluator = COCOEvaluator(
     DATASET,
     output_dir=str(OUTPUT_DIR),
+    # Must be passed explicitly -- cfg.TEST.KEYPOINT_OKS_SIGMAS alone is only read
+    # from a (deprecated) CfgNode passed as `tasks`, never picked up otherwise. Without
+    # it this crashes evaluating its own auto-detected "keypoints" task (COCO's 17
+    # default sigmas vs our 4 keypoints), before we even get to the polygon conversion
+    # below.
+    kpt_oks_sigmas=cfg.TEST.KEYPOINT_OKS_SIGMAS,
 )
 
 loader = build_detection_test_loader(
