@@ -18,7 +18,11 @@ TEST_DATASET = "blines_val"
 
 OUTPUT_DIR = "results_maskrcnn"
 
-SCORE_THRESHOLD = 0.50
+# Not 0.50 (used for Faster R-CNN/YOLO, close to their own optimal thresholds):
+# coco_threshold_analysis found Mask R-CNN's own best-F1 point at 0.875 for segm --
+# its scores are far less calibrated, so 0.50 here would include a lot of
+# medium-confidence, lower-quality detections the model itself flags as unreliable.
+SCORE_THRESHOLD = 0.875
 
 DEVICE = (
     "cuda"
