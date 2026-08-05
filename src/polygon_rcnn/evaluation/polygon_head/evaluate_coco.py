@@ -25,6 +25,9 @@ OUTPUT_DIR = Path("output_polygon_head/coco_eval")
 
 NUM_KEYPOINTS = 4
 
+# Must match train_polygon_head.py's KEYPOINT_POOLER_RESOLUTION.
+KEYPOINT_POOLER_RESOLUTION = 28
+
 DEVICE = (
     "cuda"
     if torch.cuda.is_available()
@@ -49,6 +52,8 @@ cfg.merge_from_file(
 cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
 
 cfg.MODEL.ROI_KEYPOINT_HEAD.NUM_KEYPOINTS = NUM_KEYPOINTS
+
+cfg.MODEL.ROI_KEYPOINT_HEAD.POOLER_RESOLUTION = KEYPOINT_POOLER_RESOLUTION
 
 cfg.TEST.KEYPOINT_OKS_SIGMAS = [0.05] * NUM_KEYPOINTS
 

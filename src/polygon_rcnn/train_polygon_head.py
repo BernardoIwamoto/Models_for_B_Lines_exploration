@@ -13,6 +13,16 @@ from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
 
 NUM_KEYPOINTS = 4
 
+# Default (14) upsamples to a 56px heatmap per vertex (POOLER_RESOLUTION * 4, see
+# KRCNNConvDeconvUpsampleHead). Polygon Head v1 (AP=15.0 segm_polygon, vs Mask
+# R-CNN's 40.6) showed imprecise vertex placement even on valid, non-crossing
+# polygons -- coarse for B-lines, which are thin and often span most of the image's
+# height. Doubling this doubles the final heatmap resolution to 112px. Must match
+# in evaluate_coco.py/inference.py too (conv weights are shape-invariant to spatial
+# resolution so a mismatch wouldn't crash, just silently run a checkpoint at a
+# different feature resolution than it was trained on).
+KEYPOINT_POOLER_RESOLUTION = 28
+
 
 def main():
 
@@ -39,6 +49,8 @@ def main():
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
 
     cfg.MODEL.ROI_KEYPOINT_HEAD.NUM_KEYPOINTS = NUM_KEYPOINTS
+
+    cfg.MODEL.ROI_KEYPOINT_HEAD.POOLER_RESOLUTION = KEYPOINT_POOLER_RESOLUTION
 
     # pycocotools' keypoint OKS eval needs one sigma per keypoint. COCOEvaluator
     # auto-runs a "keypoints" task (in addition to bbox) whenever predictions carry
