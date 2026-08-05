@@ -10,17 +10,23 @@ import torch
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
 
+# Registers "PolygonVertexHead" into Detectron2's ROI_KEYPOINT_HEAD_REGISTRY as a
+# side effect of the @ROI_KEYPOINT_HEAD_REGISTRY.register() decorator -- must be
+# imported before cfg.MODEL.ROI_KEYPOINT_HEAD.NAME below is looked up by name.
+from src.polygon_rcnn.polygon_vertex_head import PolygonVertexHead  # noqa: F401
+
 
 NUM_KEYPOINTS = 4
 
-# Tried doubling this to 28 (112px heatmap) hoping to fix imprecise vertex
-# placement -- made everything worse instead (segm_polygon AP 15.0 -> 3.8, bbox/AP
-# 53.9 -> 49.5, self-intersecting predictions 6.7% -> 20.4%; see commit history for
-# both runs' summary.json). With only 256 training images and 2000 iterations, a
-# finer heatmap is a harder classification target, not an easier one -- reverted to
-# the default. Must match in evaluate_coco.py/inference.py too (conv weights are
-# shape-invariant to spatial resolution so a mismatch wouldn't crash, just silently
-# run a checkpoint at a different feature resolution than it was trained on).
+# Phase 2 tried Detectron2's stock heatmap-classification keypoint head at two
+# resolutions: default (segm_polygon AP=15.0) and doubled (AP=3.8, worse -- see
+# commits 5b676fa, 34e2a06, 938976a). This run instead uses PolygonVertexHead, a
+# direct vertex-coordinate regression head with its own smooth-L1 loss (see
+# polygon_vertex_head.py for the full reasoning). POOLER_RESOLUTION here now only
+# controls the *input* feature resolution fed to that head's conv stack before
+# global pooling, not an output heatmap size, so the "coarser vs finer" tradeoff
+# that hurt the heatmap head doesn't apply the same way -- kept at 14 to match
+# Phase 1/2's protocol and avoid adding a second confound.
 KEYPOINT_POOLER_RESOLUTION = 14
 
 
@@ -48,9 +54,17 @@ def main():
 
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
 
+    cfg.MODEL.ROI_KEYPOINT_HEAD.NAME = "PolygonVertexHead"
+
     cfg.MODEL.ROI_KEYPOINT_HEAD.NUM_KEYPOINTS = NUM_KEYPOINTS
 
     cfg.MODEL.ROI_KEYPOINT_HEAD.POOLER_RESOLUTION = KEYPOINT_POOLER_RESOLUTION
+
+    # PolygonVertexHead global-average-pools before its FC layers (no upsampling
+    # path, unlike the heatmap head), so it doesn't need 8 conv layers preserving a
+    # 14x14 map end to end -- that default was tuned for the heatmap head. 4 lighter
+    # (256-channel) layers are plenty of depth before pooling for a regression head.
+    cfg.MODEL.ROI_KEYPOINT_HEAD.CONV_DIMS = (256, 256, 256, 256)
 
     # pycocotools' keypoint OKS eval needs one sigma per keypoint. COCOEvaluator
     # auto-runs a "keypoints" task (in addition to bbox) whenever predictions carry

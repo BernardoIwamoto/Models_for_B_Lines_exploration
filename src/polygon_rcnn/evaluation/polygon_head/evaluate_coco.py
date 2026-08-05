@@ -13,6 +13,7 @@ from detectron2.data import build_detection_test_loader
 from detectron2 import model_zoo
 
 from src.polygon_rcnn.register_dataset import register_blines
+from src.polygon_rcnn.polygon_vertex_head import PolygonVertexHead  # noqa: F401
 
 import torch
 
@@ -51,9 +52,15 @@ cfg.merge_from_file(
 
 cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
 
+# Must match train_polygon_head.py exactly, or the checkpoint's shapes won't line
+# up with the model this config builds.
+cfg.MODEL.ROI_KEYPOINT_HEAD.NAME = "PolygonVertexHead"
+
 cfg.MODEL.ROI_KEYPOINT_HEAD.NUM_KEYPOINTS = NUM_KEYPOINTS
 
 cfg.MODEL.ROI_KEYPOINT_HEAD.POOLER_RESOLUTION = KEYPOINT_POOLER_RESOLUTION
+
+cfg.MODEL.ROI_KEYPOINT_HEAD.CONV_DIMS = (256, 256, 256, 256)
 
 cfg.TEST.KEYPOINT_OKS_SIGMAS = [0.05] * NUM_KEYPOINTS
 
