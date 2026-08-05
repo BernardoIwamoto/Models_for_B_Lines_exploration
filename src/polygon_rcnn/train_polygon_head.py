@@ -13,15 +13,15 @@ from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
 
 NUM_KEYPOINTS = 4
 
-# Default (14) upsamples to a 56px heatmap per vertex (POOLER_RESOLUTION * 4, see
-# KRCNNConvDeconvUpsampleHead). Polygon Head v1 (AP=15.0 segm_polygon, vs Mask
-# R-CNN's 40.6) showed imprecise vertex placement even on valid, non-crossing
-# polygons -- coarse for B-lines, which are thin and often span most of the image's
-# height. Doubling this doubles the final heatmap resolution to 112px. Must match
-# in evaluate_coco.py/inference.py too (conv weights are shape-invariant to spatial
-# resolution so a mismatch wouldn't crash, just silently run a checkpoint at a
-# different feature resolution than it was trained on).
-KEYPOINT_POOLER_RESOLUTION = 28
+# Tried doubling this to 28 (112px heatmap) hoping to fix imprecise vertex
+# placement -- made everything worse instead (segm_polygon AP 15.0 -> 3.8, bbox/AP
+# 53.9 -> 49.5, self-intersecting predictions 6.7% -> 20.4%; see commit history for
+# both runs' summary.json). With only 256 training images and 2000 iterations, a
+# finer heatmap is a harder classification target, not an easier one -- reverted to
+# the default. Must match in evaluate_coco.py/inference.py too (conv weights are
+# shape-invariant to spatial resolution so a mismatch wouldn't crash, just silently
+# run a checkpoint at a different feature resolution than it was trained on).
+KEYPOINT_POOLER_RESOLUTION = 14
 
 
 def main():

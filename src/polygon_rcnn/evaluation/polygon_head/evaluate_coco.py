@@ -26,7 +26,7 @@ OUTPUT_DIR = Path("output_polygon_head/coco_eval")
 NUM_KEYPOINTS = 4
 
 # Must match train_polygon_head.py's KEYPOINT_POOLER_RESOLUTION.
-KEYPOINT_POOLER_RESOLUTION = 28
+KEYPOINT_POOLER_RESOLUTION = 14
 
 DEVICE = (
     "cuda"
