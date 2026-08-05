@@ -153,10 +153,10 @@ class PolygonVertexHead(nn.Module):
         nn.init.constant_(self.fc.bias, 0)
 
         nn.init.normal_(self.predictor.weight, std=0.001)
-        # Start every vertex prediction at the proposal box's center -- a neutral
-        # zero-th-order guess, closer to right than the (0,0) corner a zero bias
-        # would default to.
-        nn.init.constant_(self.predictor.bias, 0.5)
+        # sigmoid(0) = 0.5, so a zero bias already starts every vertex prediction at
+        # the box's center -- a neutral zero-th-order guess -- with no extra constant
+        # needed.
+        nn.init.constant_(self.predictor.bias, 0.0)
 
     @classmethod
     def from_config(cls, cfg, input_shape):
@@ -178,6 +178,16 @@ class PolygonVertexHead(nn.Module):
         x = F.relu(self.fc(x))
 
         x = self.predictor(x)
+
+        # dataset.py's box is, by construction, the tight enclosing box of the 4
+        # vertices, so the true (tx, ty) target is always in [0, 1] exactly (the
+        # extremal vertices sit exactly on an edge). Without this, an unconstrained
+        # linear output is free to place vertices outside the box -- which is
+        # exactly what happened: 88% of predictions had a vertex outside their own
+        # predicted box, inflating predicted polygon area ~20% over ground truth
+        # (AP50 0.54 but AP75 only 0.014 in that run). Bounding the output to match
+        # the guaranteed target range is a direct fix for that specific failure.
+        x = torch.sigmoid(x)
 
         return x.view(-1, self.num_keypoints, 2)
 
