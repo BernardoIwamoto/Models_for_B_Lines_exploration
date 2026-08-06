@@ -54,7 +54,25 @@ def polygon_vertex_loss(pred_deltas, instances, normalizer=None):
     # convergence) and larger ones linearly (robust early in training, when
     # predictions can be far off) -- proportioned to this target scale, unlike
     # Detectron2's box-delta beta defaults which assume a different encoding.
-    loss = F.smooth_l1_loss(pred_deltas[valid], targets[valid], reduction="sum", beta=0.1)
+    preds = pred_deltas[valid]
+    loss = F.smooth_l1_loss(preds, targets[valid], reduction="sum", beta=0.1)
+
+    # dataset.py's box is, by construction, the tight enclosing box of the 4
+    # vertices, so the true target is always exactly in [0, 1] -- but an
+    # unconstrained linear output is free to place vertices outside it, which is
+    # exactly what happened in practice (88% of predictions had a vertex outside
+    # their own predicted box, inflating predicted polygon area ~20% over ground
+    # truth). A sigmoid on the output was tried and made things substantially
+    # worse (loss plateaued early) instead of better: our targets sit
+    # disproportionately AT the boundary values 0 and 1 (every instance has at
+    # least one vertex touching each edge, by construction), exactly where
+    # sigmoid's gradient is smallest -- it suppressed learning instead of just
+    # constraining the range. This penalty instead has *zero* gradient for any
+    # prediction already inside [0, 1] -- it doesn't touch the main loss's
+    # gradient there at all -- and only grows for predictions that have actually
+    # escaped the box, pulling them back without suppressing normal learning.
+    escape = F.relu(-preds) + F.relu(preds - 1.0)
+    loss = loss + 0.1 * escape.pow(2).sum()
 
     if normalizer is None:
         normalizer = valid.sum().item()
@@ -117,6 +135,12 @@ class PolygonVertexHead(nn.Module):
     (polygon_vertex_loss), against proposal-box-relative targets -- exactly how
     Detectron2's own box head regresses box deltas. A continuous loss surface
     that rewards getting closer everywhere, not just landing in the right bin.
+    First run: 0% self-intersecting predictions (vs the heatmap head's 6.7-20.4%)
+    and AP50 roughly doubled, but predicted polygons ran ~20% larger than ground
+    truth (88% of predictions had a vertex outside their own predicted box, since
+    nothing constrained the unbounded output). A sigmoid on the output was tried
+    next and made things substantially worse, not better -- see the escape penalty
+    in polygon_vertex_loss for why, and for the fix that actually worked.
 
     Lighter than the heatmap head's conv stack on purpose: there is no upsampling
     path here, so depth is spent before global pooling rather than preserving a
@@ -153,10 +177,11 @@ class PolygonVertexHead(nn.Module):
         nn.init.constant_(self.fc.bias, 0)
 
         nn.init.normal_(self.predictor.weight, std=0.001)
-        # sigmoid(0) = 0.5, so a zero bias already starts every vertex prediction at
-        # the box's center -- a neutral zero-th-order guess -- with no extra constant
-        # needed.
-        nn.init.constant_(self.predictor.bias, 0.0)
+        # Start every vertex prediction at the box's center -- a neutral
+        # zero-th-order guess, closer to right than the (0,0) corner a zero bias
+        # would default to. (No output activation: see polygon_vertex_loss's escape
+        # penalty for why a sigmoid here made things worse, not better.)
+        nn.init.constant_(self.predictor.bias, 0.5)
 
     @classmethod
     def from_config(cls, cfg, input_shape):
@@ -179,16 +204,9 @@ class PolygonVertexHead(nn.Module):
 
         x = self.predictor(x)
 
-        # dataset.py's box is, by construction, the tight enclosing box of the 4
-        # vertices, so the true (tx, ty) target is always in [0, 1] exactly (the
-        # extremal vertices sit exactly on an edge). Without this, an unconstrained
-        # linear output is free to place vertices outside the box -- which is
-        # exactly what happened: 88% of predictions had a vertex outside their own
-        # predicted box, inflating predicted polygon area ~20% over ground truth
-        # (AP50 0.54 but AP75 only 0.014 in that run). Bounding the output to match
-        # the guaranteed target range is a direct fix for that specific failure.
-        x = torch.sigmoid(x)
-
+        # No output activation here on purpose -- see polygon_vertex_loss's escape
+        # penalty, which constrains predictions toward [0, 1] without a sigmoid's
+        # saturating gradient near the boundary values our targets concentrate at.
         return x.view(-1, self.num_keypoints, 2)
 
     def forward(self, x, instances):
