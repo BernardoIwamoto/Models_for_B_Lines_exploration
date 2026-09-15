@@ -4,17 +4,25 @@ from detectron2.engine import DefaultTrainer
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
 from detectron2.data import build_detection_test_loader, DatasetMapper
-from detectron2.evaluation import COCOEvaluator
+from detectron2.evaluation import COCOEvaluator, DatasetEvaluators
+from detectron2.utils.env import seed_all_rng
 import torch
+
+import os
 
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
+from src.polygon_rcnn.evaluation.common.polygon_coco_evaluator import PolygonSegmEvaluator
 
 # Registers "PolygonVertexHead" into Detectron2's ROI_KEYPOINT_HEAD_REGISTRY as a
 # side effect of the @ROI_KEYPOINT_HEAD_REGISTRY.register() decorator -- must be
 # imported before cfg.MODEL.ROI_KEYPOINT_HEAD.NAME below is looked up by name.
 from src.polygon_rcnn.polygon_vertex_head import PolygonVertexHead  # noqa: F401
 
+
+SEED = int(os.environ.get("SEED", 0))
+
+OUTPUT_DIR = "./output_polygon_head" if SEED == 0 else f"./output_polygon_head_seed{SEED}"
 
 NUM_KEYPOINTS = 4
 
@@ -36,6 +44,9 @@ def main():
 
     cfg = get_cfg()
     cfg.MODEL.DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+
+    cfg.SEED = SEED
+    seed_all_rng(SEED)
 
     cfg.merge_from_file(
         model_zoo.get_config_file(
@@ -100,7 +111,7 @@ def main():
 
     cfg.SOLVER.CHECKPOINT_PERIOD = 100
 
-    cfg.OUTPUT_DIR = "./output_polygon_head"
+    cfg.OUTPUT_DIR = OUTPUT_DIR
 
     resume = False
 
@@ -127,16 +138,25 @@ if __name__ == "__main__":
             if output_folder is None:
                 output_folder = f"{cfg.OUTPUT_DIR}/inference"
 
-            return COCOEvaluator(
-                dataset_name,
-                output_dir=output_folder,
-                # kpt_oks_sigmas is only read from cfg.TEST.KEYPOINT_OKS_SIGMAS when a
-                # (deprecated) CfgNode is passed as `tasks`; passing it explicitly here
-                # is the only way it actually reaches pycocotools. Without it, the
-                # periodic mid-training eval crashes on the shape mismatch (COCO's 17
-                # default sigmas vs our 4 keypoints).
-                kpt_oks_sigmas=cfg.TEST.KEYPOINT_OKS_SIGMAS,
-            )
+            # Runs alongside the stock COCOEvaluator (still gives bbox/AP, used
+            # elsewhere, and the native keypoints/AP, kept for reference) so
+            # select_best_checkpoint.py can pick checkpoints by "segm_polygon/AP" --
+            # the actual task metric, not the bbox/AP proxy the report flags as a
+            # known limitation. Same forward passes the periodic eval already runs;
+            # this only adds a CPU-side polygon conversion + COCOeval pass on top.
+            return DatasetEvaluators([
+                COCOEvaluator(
+                    dataset_name,
+                    output_dir=output_folder,
+                    # kpt_oks_sigmas is only read from cfg.TEST.KEYPOINT_OKS_SIGMAS when a
+                    # (deprecated) CfgNode is passed as `tasks`; passing it explicitly here
+                    # is the only way it actually reaches pycocotools. Without it, the
+                    # periodic mid-training eval crashes on the shape mismatch (COCO's 17
+                    # default sigmas vs our 4 keypoints).
+                    kpt_oks_sigmas=cfg.TEST.KEYPOINT_OKS_SIGMAS,
+                ),
+                PolygonSegmEvaluator(dataset_name),
+            ])
 
         def build_hooks(self):
 

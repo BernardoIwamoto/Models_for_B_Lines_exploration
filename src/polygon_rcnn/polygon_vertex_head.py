@@ -8,17 +8,6 @@ from detectron2.modeling.roi_heads.keypoint_head import ROI_KEYPOINT_HEAD_REGIST
 
 
 def polygon_vertex_loss(pred_deltas, instances, normalizer=None):
-    """Smooth-L1 loss between predicted and ground-truth vertex offsets.
-
-    pred_deltas: (N, K, 2) predicted (tx, ty) per vertex, normalized to each
-        instance's own proposal box -- the same proposal-relative, scale-invariant
-        encoding Detectron2's own box regression already uses, so the head works the
-        same way whether a B-line's box is small or spans most of the image.
-    instances: foreground-only Instances (already filtered by ROIHeads before this is
-        called), each with `proposal_boxes` and `gt_keypoints` -- the latter already
-        canonically ordered by dataset.py, so vertex slot k means the same geometric
-        corner for every instance.
-    """
 
     targets = []
     valid = []
@@ -49,26 +38,6 @@ def polygon_vertex_loss(pred_deltas, instances, normalizer=None):
     if valid.sum() == 0:
         return pred_deltas.sum() * 0
 
-    # beta=0.1: targets live in a normalized ~[0,1] (box-relative) range, so errors
-    # below 10% of the box size are treated quadratically (stable gradient near
-    # convergence) and larger ones linearly (robust early in training, when
-    # predictions can be far off) -- proportioned to this target scale, unlike
-    # Detectron2's box-delta beta defaults which assume a different encoding.
-    #
-    # Plain smooth-L1, nothing else, on purpose: predicted polygons in the first
-    # run of this head came out ~20% larger than ground truth, and 88% of
-    # predictions had a vertex outside their own predicted box, so a sigmoid and
-    # then a soft escape-penalty were both tried to constrain the output toward
-    # [0, 1]. Both made every metric worse, and neither even changed the escape
-    # rate (still ~88% with the penalty active) -- evidence the escaping wasn't
-    # the cause of the oversizing to begin with. The predicted *box* itself
-    # measured ~12-16% larger than ground truth across these runs (a box-head
-    # property shared with every model in this project, not something specific to
-    # this head), and vertices decoded proportionally to that box inherit the
-    # same inflation regardless of whether they individually stay inside [0, 1].
-    # Constraining them doesn't address that, it just adds gradient noise this
-    # small a training budget can't absorb. This is the best-performing version
-    # of the three tried.
     loss = F.smooth_l1_loss(pred_deltas[valid], targets[valid], reduction="sum", beta=0.1)
 
     if normalizer is None:
@@ -78,14 +47,6 @@ def polygon_vertex_loss(pred_deltas, instances, normalizer=None):
 
 
 def polygon_vertex_inference(pred_deltas, pred_instances):
-    """Decodes predicted (tx, ty) offsets into absolute image coordinates.
-
-    Uses each instance's final `pred_boxes` (post box-head refinement), mirroring
-    how Detectron2's stock keypoint head also decodes against pred_boxes at
-    inference despite training against proposal_boxes -- the box only becomes final
-    after its own regression head runs, and pooling/vertex regression happen before
-    that, at the proposal stage.
-    """
 
     num_instances_per_image = [len(i) for i in pred_instances]
     pred_deltas = pred_deltas.split(num_instances_per_image, dim=0)
@@ -106,10 +67,6 @@ def polygon_vertex_inference(pred_deltas, pred_instances):
         x = boxes[:, 0:1] + deltas_per_image[:, :, 0] * widths[:, None]
         y = boxes[:, 1:2] + deltas_per_image[:, :, 1] * heights[:, None]
 
-        # Reuse the instance's own detection score as a per-vertex placeholder: a
-        # direct-regression head has no separate per-vertex confidence the way a
-        # heatmap's argmax value gives one, and nothing downstream (evaluate_coco.py,
-        # inference.py) reads this third column for anything but display anyway.
         score = instances_per_image.scores[:, None].expand(-1, deltas_per_image.shape[1])
 
         instances_per_image.pred_keypoints = torch.stack([x, y, score], dim=-1)
@@ -117,36 +74,6 @@ def polygon_vertex_inference(pred_deltas, pred_instances):
 
 @ROI_KEYPOINT_HEAD_REGISTRY.register()
 class PolygonVertexHead(nn.Module):
-    """Direct vertex-coordinate regression head -- the Polygon Head, Phase 3.
-
-    Detectron2's stock keypoint head (KRCNNConvDeconvUpsampleHead) treats each
-    vertex as a heatmap classification problem. Phase 2 measured this directly:
-    segm_polygon AP=15.0 at the default heatmap resolution, and *worse* (AP=3.8,
-    more self-intersecting predictions) after doubling it -- evidence the ceiling
-    here isn't spatial resolution, but that heatmap classification gives no reason
-    for the 4 independently-classified points to land as a coherent, non-crossing
-    quadrilateral, and needs more data/iterations than this dataset provides to
-    resolve a fine spatial grid from a head with no pretrained prior for this task.
-
-    This head instead regresses each vertex's (x, y) directly via smooth-L1
-    (polygon_vertex_loss), against proposal-box-relative targets -- exactly how
-    Detectron2's own box head regresses box deltas. A continuous loss surface
-    that rewards getting closer everywhere, not just landing in the right bin.
-    Confirmed: 0% self-intersecting predictions (vs the heatmap head's 6.7-20.4%)
-    and roughly double the AP50/recall/F1 of the heatmap head. Predicted polygons
-    do run larger than ground truth on average, tracked down to the shared box
-    head predicting boxes ~12-16% larger than ground truth (true for every model
-    in this project, not specific to this head) -- vertices decoded proportionally
-    to that box inherit the same inflation. Two attempts to constrain the output
-    toward [0,1] to compensate (a sigmoid, then a soft penalty) both made every
-    metric worse without even changing how often vertices fell outside their own
-    predicted box -- see polygon_vertex_loss for why plain smooth-L1, with no
-    output constraint, is the version actually used.
-
-    Lighter than the heatmap head's conv stack on purpose: there is no upsampling
-    path here, so depth is spent before global pooling rather than preserving a
-    14x14 spatial map end to end.
-    """
 
     @configurable
     def __init__(self, input_shape, *, num_keypoints, conv_dims, fc_dim, loss_weight=1.0):
@@ -178,9 +105,6 @@ class PolygonVertexHead(nn.Module):
         nn.init.constant_(self.fc.bias, 0)
 
         nn.init.normal_(self.predictor.weight, std=0.001)
-        # Start every vertex prediction at the box's center -- a neutral
-        # zero-th-order guess, closer to right than the (0,0) corner a zero bias
-        # would default to.
         nn.init.constant_(self.predictor.bias, 0.5)
 
     @classmethod
@@ -204,8 +128,6 @@ class PolygonVertexHead(nn.Module):
 
         x = self.predictor(x)
 
-        # No output activation here on purpose -- see polygon_vertex_loss for why
-        # constraining this output (tried twice) made things worse, not better.
         return x.view(-1, self.num_keypoints, 2)
 
     def forward(self, x, instances):

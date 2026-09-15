@@ -13,15 +13,10 @@ from src.polygon_rcnn.register_dataset import register_blines
 
 MODEL_PATH = "runs/detect/output_yolo_detect/train/weights/best.pt"
 
-# Ground-truth COCO json produced by evaluate_coco.py in the Faster R-CNN pipeline,
-# built from the same blines_val dataset dicts (same image order => same image_id,
-# same category_id=0 for "bline"). Run that script first.
 GT_JSON = "output_faster_rcnn/coco_eval/blines_val_coco_format.json"
 
 OUTPUT_DIR = Path("output_yolo_detect/coco_eval")
 
-# Low threshold so pycocotools sees the full score spectrum needed to build the
-# precision-recall curve, exactly like Detectron2's own evaluation does.
 CONF_THRESHOLD = 0.001
 
 

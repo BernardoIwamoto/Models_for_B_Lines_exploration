@@ -1,22 +1,24 @@
+import os
+
 from ultralytics import YOLO
 
 
 DATA_YAML = "data/yolo_detect/data.yaml"
 
-# Local, repo-committed checkpoint: Ultralytics' auto-download by bare name
-# ("yolo11n.pt") needs outbound internet, which the training host may not have.
 MODEL = "weights/yolo11n.pt"
 
-# Mask/Faster R-CNN train for MAX_ITER=2000 at IMS_PER_BATCH=4 (~256 train images),
-# i.e. ~2000*4/256 ≈ 31 passes over the training set. EPOCHS is set to match that same
-# images-seen budget; batch size and optimizer are left at Ultralytics' own defaults
-# rather than forced to match Detectron2's, since copying batch=4 into YOLO's recipe
-# would likely just hurt its BatchNorm statistics without making the comparison fairer.
 EPOCHS = 31
 
 IMGSZ = 640
 
 OUTPUT_DIR = "output_yolo_detect"
+
+SEED = int(os.environ.get("SEED", 0))
+
+# Seed 0 keeps the "train" run name every evaluate/inference script already
+# hardcodes; other seeds get their own name so repeated runs don't overwrite each
+# other -- run as `SEED=1 python -m src.polygon_yolo.detect.train_yolo_detect`.
+RUN_NAME = "train" if SEED == 0 else f"train_seed{SEED}"
 
 
 def main():
@@ -28,9 +30,10 @@ def main():
         epochs=EPOCHS,
         imgsz=IMGSZ,
         project=OUTPUT_DIR,
-        name="train",
+        name=RUN_NAME,
         exist_ok=True,
         val=True,
+        seed=SEED,
     )
 
 

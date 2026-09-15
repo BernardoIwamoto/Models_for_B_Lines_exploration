@@ -19,12 +19,12 @@ from src.polygon_rcnn.evaluation.metrics.segmentation import (
     f1,
 )
 
-from src.polygon_rcnn.evaluation.metrics.geometry import area
+from src.polygon_rcnn.evaluation.metrics.geometry import area, polygon_to_mask
 
 import torch
 
 
-MODEL_PATH = "output_maskrcnn/model_final.pth"
+MODEL_PATH = "output_maskrcnn/model_best.pth"
 
 DATASET = "blines_val"
 
@@ -56,19 +56,6 @@ def build_predictor():
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = SCORE_THRESHOLD
 
     return DefaultPredictor(cfg)
-
-def polygon_to_mask(annotation, shape):
-
-    mask = np.zeros(shape[:2], dtype=np.uint8)
-
-    polygon = np.array(
-        annotation["segmentation"][0],
-        dtype=np.int32,
-    ).reshape(-1, 2)
-
-    cv2.fillPoly(mask, [polygon], 1)
-
-    return mask.astype(bool)
 
 def main():
 
@@ -115,7 +102,7 @@ def main():
                 continue
 
             gt_masks = [
-                polygon_to_mask(a, image.shape)
+                polygon_to_mask(a["segmentation"][0], image.shape)
                 for a in sample["annotations"]
             ]
 

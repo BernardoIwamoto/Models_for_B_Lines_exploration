@@ -3,12 +3,19 @@ from detectron2.config import get_cfg
 from detectron2 import model_zoo
 from detectron2.data import build_detection_test_loader, DatasetMapper
 from detectron2.evaluation import COCOEvaluator
+from detectron2.utils.env import seed_all_rng
 import torch
 
+import os
 from pathlib import Path
 
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
+
+
+SEED = int(os.environ.get("SEED", 0))
+
+OUTPUT_DIR = "./output_faster_rcnn" if SEED == 0 else f"./output_faster_rcnn_seed{SEED}"
 
 
 def main():
@@ -17,6 +24,9 @@ def main():
 
     cfg = get_cfg()
     cfg.MODEL.DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+
+    cfg.SEED = SEED
+    seed_all_rng(SEED)
 
     cfg.merge_from_file(
         model_zoo.get_config_file(
@@ -35,8 +45,6 @@ def main():
 
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
 
-    # Same optimization budget as train_mask_rcnn.py (same protocol, same dataset,
-    # so segm-branch cost is the only deliberate difference between the two runs).
     cfg.SOLVER.IMS_PER_BATCH = 4
 
     cfg.SOLVER.BASE_LR = 0.00025
@@ -47,16 +55,12 @@ def main():
 
     cfg.TEST.EVAL_PERIOD = 100
 
-    # See train_mask_rcnn.py: without this, only model_final.pth would ever be saved,
-    # and we already have evidence the last iteration isn't the best checkpoint.
     cfg.SOLVER.CHECKPOINT_PERIOD = 100
 
-    cfg.OUTPUT_DIR = "./output_faster_rcnn"
+    cfg.OUTPUT_DIR = OUTPUT_DIR
 
     resume = False
 
-    # See train_mask_rcnn.py: Detectron2's metrics.json is append-only, so a fresh
-    # (non-resumed) run must clear it first or its log gets mixed with older runs.
     if not resume:
         metrics_file = Path(cfg.OUTPUT_DIR) / "metrics.json"
         if metrics_file.exists():

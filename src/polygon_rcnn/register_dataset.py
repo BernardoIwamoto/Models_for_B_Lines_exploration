@@ -7,9 +7,6 @@ from src.polygon_rcnn.dataset import yolo_polygon_to_detectron
 
 DATA_ROOT = Path("data")
 
-# Matches dataset.py's _canonical_vertex_order: index 0 is always the topmost
-# vertex, followed by a consistent winding order -- a geometric role, not a
-# left/right body part, so there is nothing to swap under a horizontal flip.
 KEYPOINT_NAMES = ["v0", "v1", "v2", "v3"]
 
 KEYPOINT_FLIP_MAP = []

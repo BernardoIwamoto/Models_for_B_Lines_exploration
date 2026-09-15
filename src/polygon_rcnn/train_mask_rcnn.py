@@ -3,13 +3,27 @@ from detectron2.config import get_cfg
 from detectron2 import model_zoo
 from detectron2.data import build_detection_test_loader, DatasetMapper
 from detectron2.evaluation import COCOEvaluator
+from detectron2.utils.env import seed_all_rng
 import torch
 
+import os
 import sys
 from pathlib import Path
 
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
+
+
+# cfg.SEED alone does nothing -- Detectron2 only reads it inside default_setup(),
+# which none of these scripts call (it wants a full argparse.Namespace we don't
+# have). seed_all_rng() is what default_setup() itself calls, so this is the same
+# effect without pulling in the rest of that machinery.
+SEED = int(os.environ.get("SEED", 0))
+
+# Seed 0 keeps the exact path every evaluate/plot/inference script already hardcodes
+# (fully backward compatible); other seeds get their own directory so repeated runs
+# don't overwrite each other -- run as `SEED=1 python -m src.polygon_rcnn.train_mask_rcnn`.
+OUTPUT_DIR = "./output_maskrcnn" if SEED == 0 else f"./output_maskrcnn_seed{SEED}"
 
 
 def main():
@@ -18,6 +32,9 @@ def main():
 
     cfg = get_cfg()
     cfg.MODEL.DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+
+    cfg.SEED = SEED
+    seed_all_rng(SEED)
 
     cfg.merge_from_file(
         model_zoo.get_config_file(
@@ -52,7 +69,7 @@ def main():
     # pick from (see evaluation/common/select_best_checkpoint.py).
     cfg.SOLVER.CHECKPOINT_PERIOD = 100
 
-    cfg.OUTPUT_DIR = "./output_maskrcnn"
+    cfg.OUTPUT_DIR = OUTPUT_DIR
 
     resume = False
 
