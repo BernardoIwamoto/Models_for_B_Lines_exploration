@@ -1,10 +1,12 @@
 import json
 import shutil
-import sys
 from pathlib import Path
+import argparse
+import math
+import re
 
 
-def select_best_checkpoint(output_dir, metric="segm/AP"):
+def select_best_checkpoint(output_dir, metric="segm/AP", destination=None):
     """Copies the checkpoint with the highest validation `metric` to model_best.pth.
 
     Requires cfg.SOLVER.CHECKPOINT_PERIOD to be set (train_mask_rcnn.py/
@@ -22,42 +24,66 @@ def select_best_checkpoint(output_dir, metric="segm/AP"):
             if line:
                 rows.append(json.loads(line))
 
-    scored = [(r["iteration"], r[metric]) for r in rows if metric in r]
+    scored = [
+        (r["iteration"], r[metric]) for r in rows
+        if metric in r and isinstance(r[metric], (int, float)) and math.isfinite(r[metric])
+    ]
 
     if not scored:
         raise RuntimeError(f"No rows with '{metric}' found in {output_dir}/metrics.json")
 
     best_iteration, best_value = max(scored, key=lambda x: x[1])
 
-    checkpoint = output_dir / f"model_{best_iteration:07d}.pth"
+    # Detectron2 stores the completed iteration in metrics.json (0-based) but the
+    # periodic checkpointer names the corresponding weights using iteration + 1.
+    # Prefer that exact checkpoint, while retaining compatibility with old runs.
+    candidates = [
+        output_dir / f"model_{best_iteration + 1:07d}.pth",
+        output_dir / f"model_{best_iteration:07d}.pth",
+    ]
+    if not any(p.exists() for p in candidates) and best_iteration + 1 == max(
+        r.get("iteration", -1) for r in rows
+    ):
+        candidates.insert(0, output_dir / "model_final.pth")
+    checkpoint = next((p for p in candidates if p.exists()), None)
+    if checkpoint is None:
+        expected = ", ".join(p.name for p in candidates)
+        raise FileNotFoundError(
+            f"No checkpoint for best {metric}={best_value} at iteration "
+            f"{best_iteration}; checked: {expected}"
+        )
 
-    if not checkpoint.exists():
-        # The last evaluated iteration has no periodic checkpoint of its own --
-        # model_final.pth already is that checkpoint.
-        checkpoint = output_dir / "model_final.pth"
-
-    shutil.copy(checkpoint, output_dir / "model_best.pth")
-
-    print(f"Best {metric}={best_value:.2f} at iteration {best_iteration} -> {checkpoint.name}")
-    print(f"Copied to {output_dir / 'model_best.pth'}")
-
-    # Each periodic checkpoint is a full model (hundreds of MB); with CHECKPOINT_PERIOD
-    # matching EVAL_PERIOD that's ~20 of them per run. Keep only what's needed going
-    # forward: model_best.pth (used from here on) and model_final.pth (for reference).
-    removed = 0
-    for stale in output_dir.glob("model_*.pth"):
-        if stale.name not in {"model_best.pth", "model_final.pth"}:
-            stale.unlink()
-            removed += 1
-
-    if removed:
-        print(f"Removed {removed} intermediate checkpoint(s) to free up disk space.")
-
-    return checkpoint
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", metric).strip("_")
+    destination = Path(destination) if destination else output_dir / f"model_best_{slug}.pth"
+    if destination.exists():
+        raise FileExistsError(
+            f"Refusing to overwrite existing selected checkpoint: {destination}. "
+            "Choose a new destination to preserve the prior run."
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(checkpoint, destination)
+    selection = {
+        "metric": metric,
+        "value": best_value,
+        "metrics_iteration": best_iteration,
+        "checkpoint": str(checkpoint),
+        "selected_copy": str(destination),
+    }
+    metadata_path = destination.with_suffix(destination.suffix + ".selection.json")
+    with metadata_path.open("x", encoding="utf-8") as handle:
+        json.dump(selection, handle, indent=2)
+        handle.write("\n")
+    print(
+        f"Best {metric}={best_value:.2f} at metrics iteration {best_iteration}: "
+        f"{checkpoint.name} -> {destination}"
+    )
+    return destination
 
 
 if __name__ == "__main__":
-    output_dir = sys.argv[1] if len(sys.argv) > 1 else "output_maskrcnn"
-    metric = sys.argv[2] if len(sys.argv) > 2 else "segm/AP"
-
-    select_best_checkpoint(output_dir, metric)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("output_dir", nargs="?", default="output_maskrcnn")
+    parser.add_argument("metric", nargs="?", default="segm/AP")
+    parser.add_argument("--destination")
+    args = parser.parse_args()
+    select_best_checkpoint(args.output_dir, args.metric, args.destination)

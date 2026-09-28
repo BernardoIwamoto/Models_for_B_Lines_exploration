@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import os
 
 import numpy as np
 from ultralytics import YOLO
@@ -11,18 +12,18 @@ from detectron2.data import DatasetCatalog
 from src.polygon_rcnn.register_dataset import register_blines
 
 
-MODEL_PATH = "runs/detect/output_yolo_detect/train/weights/best.pt"
+MODEL_PATH = os.environ.get("MODEL_PATH", "runs/detect/output_yolo_detect/train/weights/best.pt")
 
-GT_JSON = "output_faster_rcnn/coco_eval/blines_val_coco_format.json"
+GT_JSON = os.environ.get("GT_JSON", "output_faster_rcnn/coco_eval/blines_val_coco_format.json")
 
-OUTPUT_DIR = Path("output_yolo_detect/coco_eval")
+OUTPUT_DIR = Path(os.environ.get("EVAL_OUTPUT_DIR", "output_yolo_detect/coco_eval"))
 
 CONF_THRESHOLD = 0.001
 
 
 def main():
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=False)
 
     register_blines()
 

@@ -1,0 +1,268 @@
+Relatório de experimentos — segmentação de B-Lines em ultrassom pulmonar
+Projeto Models_for_B_Lines_exploration
+2 de setembro de 2026
+
+
+Contexto
+
+O projeto estuda a segmentação automática de B-Lines em ultrassom pulmonar. A ideia
+central não é só treinar um modelo, mas montar uma estrutura de experimentos que
+permita comparar arquiteturas diferentes usando exatamente o mesmo dataset, o mesmo
+protocolo de treino e as mesmas métricas de avaliação.
+
+As anotações originais estão no formato YOLO Polygon: cada B-Line é um quadrilátero
+de 4 vértices (classe x1 y1 x2 y2 x3 y3 x4 y4, coordenadas normalizadas).
+
+
+Dataset
+
+Treino: 256 imagens.
+Validação: 75 imagens, 115 instâncias anotadas (1,53 B-Lines por imagem em média).
+Teste: 70 imagens, mas sem rótulo ainda.
+
+Como o teste não tem anotação, todos os números deste relatório vêm do split de
+validação — que é o mesmo usado para acompanhar o treino. Não temos hoje um conjunto
+verdadeiramente "não visto" para reportar um número final. Isso está na seção de
+limitações.
+
+
+Protocolo comum (Mask R-CNN, Faster R-CNN e Polygon Head)
+
+Backbone ResNet-50 + FPN, framework Detectron2, peso inicial pré-treinado no COCO.
+Batch de 4 imagens, learning rate 0,00025, 2000 iterações. A cada 100 iterações
+medimos AP de validação e salvamos um checkpoint. No fim, escolhemos o melhor
+checkpoint pelo AP de validação, não o último (motivo detalhado abaixo). Também
+adicionamos um hook para calcular loss de validação, já que o Detectron2 por padrão
+só calcula AP de validação, não loss.
+
+O YOLOv11 usa seu próprio protocolo de treino (framework diferente, Ultralytics),
+mas roda sobre o mesmo dataset e é avaliado com o mesmo código de avaliação COCO.
+
+
+Mask R-CNN (baseline)
+
+Arquitetura de referência do projeto: detecta a caixa do objeto e prevê uma máscara
+binária livre, pixel a pixel, para cada instância.
+
+Duas coisas importantes apareceram ao analisar o treino. A primeira é overfitting:
+a loss de treino cai sem parar até ~0,28, mas a loss de validação para de melhorar
+por volta da iteração 900-1400 (mínimo ~0,44) e depois volta a subir, chegando a
+~0,51 no final. A segunda, consequência direta da primeira, é que o checkpoint final
+não é o melhor: o AP de segmentação de validação pica na iteração 1399 (40,61) e cai
+para 38,33 na iteração 2000. Por isso passamos a escolher o melhor checkpoint em vez
+de sempre usar o último — só essa mudança levou o AP de segmentação reportado de
+36,7 para 40,6.
+
+Resultados no melhor checkpoint:
+
+Métricas por instância (matching manual de IoU): IoU médio 0,52 (mediana 0,65),
+Dice médio 0,61 (mediana 0,78), precisão média 0,59, recall médio 0,67, confiança
+média 0,91.
+
+COCO oficial: bbox AP 54,1 / AP50 88,8 / AP75 57,6. Segmentação AP 40,6 / AP50 83,6
+/ AP75 33,0.
+
+No threshold de confiança ótimo (0,875), o F1 chega a 0,82 (precisão 0,81, recall
+0,83). Vale registrar: ao inspecionar as máscaras visualmente usando o threshold
+padrão (0,50), apareciam máscaras borradas e detecções extras (2,31 por imagem
+contra 1,53 reais). Usando o threshold ótimo do próprio modelo, isso quase
+desapareceu — boa parte do que parecia "modelo ruim" era só visualização com
+threshold errado.
+
+
+Faster R-CNN
+
+Mesma espinha dorsal do Mask R-CNN, sem a etapa de máscara — só detecta a caixa.
+A ideia foi isolar "quão difícil é achar a B-Line" de "quão difícil é desenhar a
+forma dela". Usa o mesmo dataset já registrado, sem nenhuma conversão nova.
+
+Resultado no melhor checkpoint: bbox AP 54,4 / AP50 89,1 / AP75 59,1. Melhor F1 de
+0,85 no threshold 0,53 (precisão 0,81, recall 0,89).
+
+
+YOLOv11
+
+Arquitetura one-stage diferente da família R-CNN (Ultralytics), para checar se a
+dificuldade era específica dos R-CNN. Usamos o yolo11n (variante nano), com o
+dataset convertido de polígono para bbox a partir da mesma anotação original, 31
+épocas (equivalente ao número de imagens vistas pelo protocolo dos R-CNN: 2000
+iterações x 4 de batch / 256 imagens), e os hiperparâmetros de treino padrão do
+Ultralytics — não forçamos os mesmos valores do Detectron2, porque copiar
+hiperparâmetro de um framework para o outro tende a atrapalhar mais do que ajudar.
+
+As predições foram exportadas para o formato COCO e avaliadas com o mesmo código
+pycocotools usado nos outros dois modelos, não com a métrica nativa do Ultralytics,
+para manter a comparação justa.
+
+Resultado: bbox AP 56,5 / AP50 87,6 / AP75 61,8. Melhor F1 de 0,82 no threshold 0,53
+(precisão 0,86, recall 0,78).
+
+
+Comparando os três modelos de caixa
+
+                       AP      AP50    AP75
+Mask R-CNN (caixa)     54,1    88,8    57,6
+Faster R-CNN           54,4    89,1    59,1
+YOLOv11                56,5    87,6    61,8
+
+Os três ficam num intervalo estreito, cerca de 2,5 pontos de AP de diferença. O
+YOLOv11 tem uma vantagem discreta, mais visível no AP75 (localização mais precisa),
+mas não é uma diferença categórica. Gráfico em results_bbox_baseline/comparison_ap.png.
+
+
+Polygon Head — primeira tentativa (heatmap)
+
+Em vez de máscara livre, a ideia da Polygon Head é prever diretamente os 4 vértices
+do quadrilátero. Na primeira tentativa, reaproveitamos a infraestrutura de Keypoint
+R-CNN que já vem pronta no Detectron2 (originalmente feita para pose humana, 17
+pontos), trocando para 4 pontos — cada vértice tratado como um "ponto-chave"
+localizado por um mapa de calor espacial. A escolha de reaproveitar essa
+infraestrutura em vez de escrever algo do zero foi para evitar reimplementar, sem
+GPU disponível para testar, as partes mais arriscadas: a transformação correta dos
+pontos quando a imagem sofre corte ou espelhamento durante o treino.
+
+Testamos duas resoluções de mapa de calor:
+
+                        AP      AP50    AP75    melhor F1   recall@0,5    % polígono inválido
+Resolução padrão        15,0    37,1    11,9    0,49        0,59          6,7%
+Resolução dobrada         3,8    10,8     2,7    0,25        0,34         20,4%
+
+("Polígono inválido" quer dizer que os 4 vértices, ligados na ordem prevista,
+formam uma figura que se cruza — não é um quadrilátero simples.)
+
+Aumentar a resolução piorou o resultado em vez de melhorar. Com pouco dado (256
+imagens) e poucas iterações, um alvo de classificação mais fino é mais difícil de
+aprender, não mais fácil. Além disso, o heatmap trata os 4 vértices como 4
+classificações independentes — nada na arquitetura obriga os pontos a formarem uma
+figura coerente, o que explica a taxa de auto-interseção.
+
+Para comparar com o Mask R-CNN de forma justa, convertemos o polígono previsto de
+volta em segmentação e avaliamos com o mesmo COCOeval usado na baseline
+("segm_polygon"), então esse AP é diretamente comparável ao AP de segmentação da
+seção do Mask R-CNN.
+
+
+Polygon Head — regressão direta de vértice
+
+Se o problema era o paradigma de classificação por mapa de calor, a alternativa
+natural é prever diretamente as coordenadas (x,y) de cada vértice — regressão
+contínua em vez de classificação num grid. Como não existe isso pronto no
+Detectron2, escrevemos uma cabeça de rede nova: 4 convoluções, um pooling global e
+duas camadas densas, terminando em 8 números (4 vértices x 2 coordenadas) por
+objeto. A loss é smooth-L1, comparando a posição prevista com a real, as duas
+normalizadas em relação à própria caixa do objeto — a mesma técnica que a
+regressão de bounding box do Detectron2 já usa.
+
+Testamos três variantes:
+
+                                    AP     AP50    AP75    melhor F1   recall@0,5   recall@0,75
+Sem restrição na saída (melhor)     12,2   54,2    1,4     0,63        0,74         0,10
+Com sigmoid na saída                 4,3   22,9    0,1     0,37        0,42         0,02
+Com penalidade suave de escape       8,2   35,3    0,1     0,46        0,55         0,03
+
+Nas três, a taxa de polígono auto-intersectado caiu para 0% (contra 6,7-20,4% do
+heatmap) — a regressão direta resolve esse problema estrutural por completo.
+
+A versão sem restrição, apesar de melhor, produzia polígonos cerca de 20% maiores
+que o real, e 88% das predições tinham algum vértice fora da própria caixa
+prevista, porque nada na arquitetura impedia isso. Tentamos duas correções. A
+primeira, um sigmoid forçando a saída entre 0 e 1, piorou tudo: os alvos reais se
+concentram exatamente nos valores extremos (0 e 1, já que a caixa é definida pelos
+próprios vértices), e é justamente ali que o gradiente do sigmoid é menor — trava o
+aprendizado em vez de só limitar a saída. A segunda, uma penalidade suave que só
+age quando o vértice sai do intervalo válido, também piorou, e de forma reveladora:
+a taxa de vértices fora da caixa nem mudou (continuou em torno de 88%). Isso mostra
+que "vértice escapando da caixa" nunca foi a causa do problema, só um sintoma.
+
+A causa real, encontrada comparando a área da caixa prevista com a área da caixa
+real, é que a própria caixa delimitadora sai sistematicamente 12 a 16% maior que a
+verdadeira — e isso é uma característica do box head compartilhada por todos os
+modelos do projeto (Mask R-CNN, Faster R-CNN, YOLO), não algo específico da Polygon
+Head. Como os vértices são calculados proporcionalmente à caixa, eles herdam esse
+mesmo viés, e por isso restringir o vértice não resolve — o problema está uma
+camada acima. Decidimos manter a versão sem restrição, que é a melhor das três, e
+não continuar ajustando esse detalhe específico depois de três experimentos reais
+apontarem na mesma direção.
+
+
+Resumo geral
+
+                                            AP      AP50    AP75
+Mask R-CNN — segmentação (máscara)         40,6    83,6    33,0
+Mask R-CNN — caixa                         54,1    88,8    57,6
+Faster R-CNN — caixa                       54,4    89,1    59,1
+YOLOv11 — caixa                            56,5    87,6    61,8
+Polygon Head heatmap (melhor variante)     15,0    37,1    11,9
+Polygon Head regressão direta (melhor)     12,2    54,2     1,4
+
+Nenhuma das duas versões da Polygon Head superou o Mask R-CNN com máscara binária
+livre. A regressão direta é claramente a melhor das duas abordagens de Polygon Head
+(zero polígonos inválidos, recall e F1 melhores que o heatmap), mas ainda fica
+abaixo da baseline em AP médio. As causas mais prováveis: a máscara herda
+conhecimento de pré-treino no COCO, enquanto a previsão de vértice aprende do zero
+em 256 imagens; a máscara tem supervisão densa (milhares de pixels rotulados por
+objeto) contra só 8 números por objeto na regressão de vértice; e o viés de ~15%
+do box head, que afeta os dois tipos de Polygon Head igualmente.
+
+
+Limitações e pontos em aberto
+
+Cada configuração rodou uma única vez, sem repetição de seed nem intervalo de
+confiança — as diferenças grandes provavelmente são reais, mas isso não foi
+comprovado estatisticamente.
+
+A seleção de melhor checkpoint usa o AP de caixa (bbox/AP) como proxy, porque é a
+única métrica calculada automaticamente durante o treino — não está perfeitamente
+alinhada com a métrica final de polígono.
+
+O flip horizontal foi desligado nas rodadas de Polygon Head, porque a ordenação
+canônica dos vértices depende da orientação da imagem, enquanto Mask R-CNN e Faster
+R-CNN treinam com flip ligado. É uma diferença de protocolo, não uma comparação
+100% idêntica.
+
+A métrica "segm_polygon" não é uma AP de máscara por pixel no sentido literal — é o
+polígono avaliado pelo mesmo COCOeval de segmentação, uma comparação justa, mas que
+precisa ser identificada como tal.
+
+Não existe ainda um conjunto de teste anotado separado do de validação.
+
+E o ponto mais importante para direcionar os próximos passos: o desenho da Polygon
+Head e da sua loss foi feito por engenharia própria — reaproveitando o padrão de
+regressão de caixa do Detectron2 e por diagnóstico dos próprios experimentos — sem
+revisão prévia da literatura específica sobre detecção de quadriláteros e objetos
+orientados. Existem trabalhos diretamente relevantes que ainda não foram
+consultados: EAST e TextBoxes++ (detecção de texto via 4 cantos, com supervisão
+densa por pixel, não um único vetor por objeto), Gliding Vertex e RoI Transformer
+(parametrizam o vértice como deslocamento a partir de uma caixa alinhada, uma
+regressão mais restrita do que a nossa), e CornerNet (heatmap de cantos com um
+mecanismo extra para garantir coerência entre os pontos, que nossa versão de
+heatmap não tinha). Essa é uma lacuna real e deve orientar a próxima rodada de
+experimentos.
+
+
+Onde estão os arquivos
+
+Imagens de predição (GT em verde, predição em vermelho, 75 por modelo):
+results_maskrcnn/, results_faster_rcnn/, results_yolo_detect/, results_polygon_head/
+
+Gráficos de treino e COCOeval:
+src/polygon_rcnn/evaluation/mask_rcnn/outputs/
+src/polygon_rcnn/evaluation/faster_rcnn/outputs/
+src/polygon_yolo/detect/outputs/
+src/polygon_rcnn/evaluation/polygon_head/outputs/
+
+Comparação entre os três modelos de caixa:
+results_bbox_baseline/comparison_ap.png e comparison.json
+
+Código principal:
+src/polygon_rcnn/dataset.py (conversão do rótulo original)
+src/polygon_rcnn/register_dataset.py (registro do dataset)
+src/polygon_rcnn/train_mask_rcnn.py, train_faster_rcnn.py, train_polygon_head.py
+src/polygon_rcnn/polygon_vertex_head.py (cabeça e loss de regressão de vértice)
+src/polygon_yolo/detect/ (pipeline YOLOv11)
+src/polygon_rcnn/evaluation/ (avaliação COCO de cada modelo)
+scripts/compare_bbox_baseline.py
+
+O histórico completo dos experimentos de Polygon Head, incluindo os descartados,
+está preservado nos commits do git: 5b676fa, 34e2a06, 19788c5, d4841d9, 93a4950,
+fe815ef, a718db6.

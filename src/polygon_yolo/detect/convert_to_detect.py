@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-import numpy as np
+from src.polygon_rcnn.annotation import parse_yolo_polygon_line
 
 
 DATA_ROOT = Path("data")
@@ -29,6 +29,8 @@ def convert_split(split):
         if not link_path.exists():
             target = os.path.relpath(image_path.resolve(), start=link_path.parent)
             link_path.symlink_to(target)
+        elif not link_path.is_symlink() or link_path.resolve() != image_path.resolve():
+            raise FileExistsError(f"Refusing to replace non-matching dataset image link: {link_path}")
 
         label_path = label_dir / f"{image_path.stem}.txt"
 
@@ -40,18 +42,19 @@ def convert_split(split):
 
             with open(label_path) as f:
 
-                for line in f:
+                for line_number, line in enumerate(f, 1):
 
                     line = line.strip()
 
                     if not line:
                         continue
 
-                    values = list(map(float, line.split()))
-
-                    cls = int(values[0])
-
-                    coords = np.array(values[1:]).reshape(-1, 2)
+                    parsed = parse_yolo_polygon_line(
+                        line, source=f"{label_path}:{line_number}"
+                    )
+                    if parsed is None:
+                        continue
+                    cls, coords = parsed
 
                     xmin, ymin = coords.min(axis=0)
                     xmax, ymax = coords.max(axis=0)
@@ -63,7 +66,14 @@ def convert_split(split):
 
                     lines.append(f"{cls} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}")
 
-        out_label_path.write_text("\n".join(lines))
+        converted = "\n".join(lines)
+        if out_label_path.exists():
+            if out_label_path.read_text() != converted:
+                raise FileExistsError(
+                    f"Refusing to overwrite changed converted labels: {out_label_path}"
+                )
+        else:
+            out_label_path.write_text(converted)
 
 
 for split in SPLITS:
@@ -79,6 +89,11 @@ names:
   0: bline
 """
 
-(OUTPUT_ROOT / "data.yaml").write_text(data_yaml)
+yaml_path = OUTPUT_ROOT / "data.yaml"
+if yaml_path.exists():
+    if yaml_path.read_text() != data_yaml:
+        raise FileExistsError(f"Refusing to overwrite changed dataset config: {yaml_path}")
+else:
+    yaml_path.write_text(data_yaml)
 
 print(f"YOLO detection dataset written to {OUTPUT_ROOT}")

@@ -9,7 +9,10 @@ DATA_ROOT = Path("data")
 
 KEYPOINT_NAMES = ["v0", "v1", "v2", "v3"]
 
-KEYPOINT_FLIP_MAP = []
+# Horizontal reflections exchange left/right corners. The mapper subsequently
+# canonicalizes the point set again, so these pairs only maintain valid keypoint
+# metadata while Detectron2 applies the image transform.
+KEYPOINT_FLIP_MAP = [("v0", "v1"), ("v2", "v3")]
 
 
 def register_blines():

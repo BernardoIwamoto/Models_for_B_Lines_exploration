@@ -1,6 +1,9 @@
 import os
+from pathlib import Path
 
 from ultralytics import YOLO
+
+from src.polygon_rcnn.experiment_registry import prepare_run, timed_stage
 
 
 DATA_YAML = "data/yolo_detect/data.yaml"
@@ -11,30 +14,36 @@ EPOCHS = 31
 
 IMGSZ = 640
 
-OUTPUT_DIR = "output_yolo_detect"
-
 SEED = int(os.environ.get("SEED", 0))
-
-# Seed 0 keeps the "train" run name every evaluate/inference script already
-# hardcodes; other seeds get their own name so repeated runs don't overwrite each
-# other -- run as `SEED=1 python -m src.polygon_yolo.detect.train_yolo_detect`.
-RUN_NAME = "train" if SEED == 0 else f"train_seed{SEED}"
 
 
 def main():
 
+    run_dir = Path(prepare_run(
+        "yolo11n_bbox", SEED,
+        {
+            "epochs": EPOCHS,
+            "batch_size": int(os.environ.get("BATCH_SIZE", 16)),
+            "learning_rate": "Ultralytics default",
+            "image_size": IMGSZ,
+            "weights": MODEL,
+        },
+        "Ultralytics best.pt fitness (bbox mAP50-95)",
+    ))
     model = YOLO(MODEL)
 
-    model.train(
-        data=DATA_YAML,
-        epochs=EPOCHS,
-        imgsz=IMGSZ,
-        project=OUTPUT_DIR,
-        name=RUN_NAME,
-        exist_ok=True,
-        val=True,
-        seed=SEED,
-    )
+    with timed_stage(run_dir, "training_wall_seconds"):
+        model.train(
+            data=DATA_YAML,
+            epochs=EPOCHS,
+            imgsz=IMGSZ,
+            project=str(run_dir.parent),
+            name=run_dir.name,
+            exist_ok=True,
+            val=True,
+            seed=SEED,
+            batch=int(os.environ.get("BATCH_SIZE", 16)),
+        )
 
 
 if __name__ == "__main__":

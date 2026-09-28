@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from src.polygon_rcnn.evaluation.metrics.geometry import box_iou
 from src.polygon_rcnn.evaluation.metrics.statistics import summarize
+from src.polygon_rcnn.evaluation.metrics.polygon import orientation
 
 
 MATCH_IOU_THRESHOLD = 0.5
@@ -15,9 +16,8 @@ MATCH_IOU_THRESHOLD = 0.5
 
 def match_predictions_to_gt(gt_by_image, preds_by_image, match_iou_threshold=MATCH_IOU_THRESHOLD):
     """Greedy IoU matching, one GT per prediction, highest-score predictions first --
-    the same protocol evaluate_predictions.py already uses for masks, applied here
-    to boxes (xywh) so every model in this project (Mask R-CNN, Faster R-CNN, YOLO,
-    Polygon Head) gets matched the same way for this analysis.
+    a distinct box-matching geometry protocol (xywh). Do not conflate it with the
+    mask-IoU matching used by evaluate_predictions.py.
     """
 
     matches = []
@@ -60,7 +60,6 @@ def analyze(gt_json, predictions_json, output_dir, score_threshold=0.5):
     """
 
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     with open(gt_json) as f:
         gt = json.load(f)
@@ -85,6 +84,8 @@ def analyze(gt_json, predictions_json, output_dir, score_threshold=0.5):
             "lower --score-threshold."
         )
 
+    output_dir.mkdir(parents=True, exist_ok=False)
+
     rows = []
 
     for pred, gt_ann, matched_iou in matches:
@@ -99,6 +100,12 @@ def analyze(gt_json, predictions_json, output_dir, score_threshold=0.5):
 
         gt_area = gw * gh
 
+        segmentation = gt_ann.get("segmentation", [])
+        if isinstance(segmentation, list) and segmentation and segmentation[0]:
+            angle = float(np.degrees(orientation(segmentation[0])) % 180.0)
+        else:
+            angle = float("nan")
+
         rows.append({
             "image_id": pred["image_id"],
             "score": pred["score"],
@@ -108,6 +115,7 @@ def analyze(gt_json, predictions_json, output_dir, score_threshold=0.5):
             "height_ratio": ph / gh if gh > 0 else float("nan"),
             "center_error": center_error,
             "gt_area": gt_area,
+            "orientation_deg": angle,
         })
 
     with open(output_dir / "bbox_bias.csv", "w", newline="") as f:
@@ -121,6 +129,45 @@ def analyze(gt_json, predictions_json, output_dir, score_threshold=0.5):
     }
     summary["n_matched"] = len(rows)
     summary["n_gt"] = sum(len(v) for v in gt_by_image.values())
+    summary["matched_fraction_of_gt"] = len(rows) / max(summary["n_gt"], 1)
+    summary["conditional_on_score_threshold"] = score_threshold
+
+    image_rows = []
+    for image_id in sorted({r["image_id"] for r in rows}):
+        image_matches = [r for r in rows if r["image_id"] == image_id]
+        image_rows.append({
+            "image_id": image_id,
+            "n_matched": len(image_matches),
+            "median_area_ratio": float(np.median([r["area_ratio"] for r in image_matches])),
+            "median_width_ratio": float(np.median([r["width_ratio"] for r in image_matches])),
+            "median_height_ratio": float(np.median([r["height_ratio"] for r in image_matches])),
+            "median_center_error": float(np.median([r["center_error"] for r in image_matches])),
+        })
+    with open(output_dir / "bbox_bias_by_image.csv", "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(image_rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(image_rows)
+
+    orientation_groups = {}
+    for lower in range(0, 180, 30):
+        selected = [r["area_ratio"] for r in rows
+                    if np.isfinite(r["orientation_deg"]) and lower <= r["orientation_deg"] < lower + 30]
+        orientation_groups[f"{lower:03d}-{lower + 30:03d}_deg"] = (
+            summarize(selected) if selected else {"n": 0}
+        )
+    summary["area_ratio_by_orientation"] = orientation_groups
+
+    for field, edges, label in (
+        ("gt_area", np.quantile([r["gt_area"] for r in rows], [0, .25, .5, .75, 1]), "gt_area"),
+        ("score", np.quantile([r["score"] for r in rows], [0, .25, .5, .75, 1]), "score"),
+    ):
+        groups = {}
+        for index in range(4):
+            lo, hi = float(edges[index]), float(edges[index + 1])
+            selected = [r["area_ratio"] for r in rows
+                        if (lo <= r[field] <= hi if index == 3 else lo <= r[field] < hi)]
+            groups[f"q{index + 1}_{lo:.4g}_{hi:.4g}"] = summarize(selected) if selected else {"n": 0}
+        summary[f"area_ratio_by_{label}_quartile"] = groups
 
     with open(output_dir / "bbox_bias_summary.json", "w") as f:
         json.dump(summary, f, indent=4)
@@ -170,6 +217,18 @@ def analyze(gt_json, predictions_json, output_dir, score_threshold=0.5):
     plt.title("Area bias vs. confidence")
     plt.tight_layout()
     plt.savefig(output_dir / "area_ratio_vs_score.png")
+    plt.close()
+
+    angle = np.array([r["orientation_deg"] for r in rows])
+    plt.figure(figsize=(6, 5))
+    valid = np.isfinite(angle)
+    plt.scatter(angle[valid], area_ratios[valid], alpha=0.6, s=15)
+    plt.axhline(1.0, color="red", linestyle="--")
+    plt.xlabel("Ground-truth long-axis orientation (degrees, [0, 180))")
+    plt.ylabel("Predicted / GT box area ratio")
+    plt.title("Area bias vs. B-line orientation")
+    plt.tight_layout()
+    plt.savefig(output_dir / "area_ratio_vs_orientation.png")
     plt.close()
 
     print(json.dumps(summary, indent=4))

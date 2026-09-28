@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import os
 
 import numpy as np
 from pycocotools.coco import COCO
@@ -13,16 +14,20 @@ from detectron2.data import build_detection_test_loader
 from detectron2 import model_zoo
 
 from src.polygon_rcnn.register_dataset import register_blines
+from src.polygon_rcnn.experiment_registry import timed_stage
 from src.polygon_rcnn.polygon_vertex_head import PolygonVertexHead  # noqa: F401
 
 import torch
 
 
-MODEL_PATH = "output_polygon_head/model_best.pth"
+MODEL_PATH = os.environ.get("MODEL_PATH", "output_polygon_head/model_best_segm_polygon_AP.pth")
 
 DATASET = "blines_val"
 
-OUTPUT_DIR = Path("output_polygon_head/coco_eval")
+OUTPUT_DIR = Path(os.environ.get("EVAL_OUTPUT_DIR", "output_polygon_head/coco_eval"))
+if OUTPUT_DIR.exists():
+    raise FileExistsError(f"Refusing to overwrite evaluation artifacts: {OUTPUT_DIR}")
+OUTPUT_DIR.mkdir(parents=True)
 
 NUM_KEYPOINTS = 4
 
@@ -86,11 +91,12 @@ loader = build_detection_test_loader(
     DATASET,
 )
 
-results = DefaultTrainer.test(
-    cfg,
-    predictor.model,
-    evaluators=[evaluator],
-)
+with timed_stage(OUTPUT_DIR, "validation_inference_and_metrics_wall_seconds"):
+    results = DefaultTrainer.test(
+        cfg,
+        predictor.model,
+        evaluators=[evaluator],
+    )
 
 # Our dataset dicts carry both "segmentation" (raw polygon) and "keypoints" (same 4
 # vertices, canonically ordered) per instance, so the ground-truth json COCOEvaluator

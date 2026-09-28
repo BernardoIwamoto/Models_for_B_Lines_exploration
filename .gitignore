@@ -172,6 +172,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# Immutable training/evaluation runs (large logs and checkpoints)
+runs/
+
 # Pyre type checker
 .pyre/
 

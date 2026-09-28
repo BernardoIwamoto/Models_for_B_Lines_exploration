@@ -3,6 +3,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from src.polygon_rcnn.annotation import parse_yolo_polygon_line
+
 
 def _canonical_vertex_order(coords):
     """Reorders 4 polygon vertices so index 0 is always the topmost point, followed
@@ -50,16 +52,15 @@ def yolo_polygon_to_detectron(image_dir, label_dir):
 
             with open(label_path) as f:
 
-                for line in f:
+                for line_number, line in enumerate(f, 1):
 
-                    values = list(map(float, line.strip().split()))
-
-                    cls = int(values[0])
-
-                    coords = np.array(values[1:]).reshape(-1, 2)
-
-                    if len(coords) > 4:
-                        coords = coords[:4]
+                    parsed = parse_yolo_polygon_line(
+                        line, source=f"{label_path}:{line_number}"
+                    )
+                    if parsed is None:
+                        continue
+                    cls, coords = parsed
+                    coords = coords.copy()
 
                     coords[:, 0] *= w
                     coords[:, 1] *= h

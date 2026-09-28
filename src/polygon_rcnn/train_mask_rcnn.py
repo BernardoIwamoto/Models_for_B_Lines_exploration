@@ -1,6 +1,7 @@
 from detectron2.engine import DefaultTrainer
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
+from pathlib import Path
 from detectron2.data import build_detection_test_loader, DatasetMapper
 from detectron2.evaluation import COCOEvaluator
 from detectron2.utils.env import seed_all_rng
@@ -8,10 +9,10 @@ import torch
 
 import os
 import sys
-from pathlib import Path
 
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
+from src.polygon_rcnn.experiment_registry import prepare_run, save_detectron_config, timed_stage
 
 
 # cfg.SEED alone does nothing -- Detectron2 only reads it inside default_setup(),
@@ -19,12 +20,6 @@ from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
 # have). seed_all_rng() is what default_setup() itself calls, so this is the same
 # effect without pulling in the rest of that machinery.
 SEED = int(os.environ.get("SEED", 0))
-
-# Seed 0 keeps the exact path every evaluate/plot/inference script already hardcodes
-# (fully backward compatible); other seeds get their own directory so repeated runs
-# don't overwrite each other -- run as `SEED=1 python -m src.polygon_rcnn.train_mask_rcnn`.
-OUTPUT_DIR = "./output_maskrcnn" if SEED == 0 else f"./output_maskrcnn_seed{SEED}"
-
 
 def main():
 
@@ -69,23 +64,25 @@ def main():
     # pick from (see evaluation/common/select_best_checkpoint.py).
     cfg.SOLVER.CHECKPOINT_PERIOD = 100
 
-    cfg.OUTPUT_DIR = OUTPUT_DIR
+    cfg.OUTPUT_DIR = prepare_run(
+        "mask_rcnn_instance_segmentation", SEED,
+        {
+            "batch_size": cfg.SOLVER.IMS_PER_BATCH,
+            "learning_rate": cfg.SOLVER.BASE_LR,
+            "max_iter": cfg.SOLVER.MAX_ITER,
+        },
+        "segm/AP",
+    )
+    save_detectron_config(cfg.OUTPUT_DIR, cfg)
 
     resume = False
-
-    # Detectron2's metrics.json is opened in append mode, so restarting a fresh
-    # (non-resumed) run here would otherwise just concatenate its log after whatever
-    # a previous run already wrote, silently mixing curves from unrelated runs.
-    if not resume:
-        metrics_file = Path(cfg.OUTPUT_DIR) / "metrics.json"
-        if metrics_file.exists():
-            metrics_file.unlink()
 
     trainer = PolygonTrainer(cfg)
 
     trainer.resume_or_load(resume=resume)
 
-    trainer.train()
+    with timed_stage(cfg.OUTPUT_DIR, "training_wall_seconds"):
+        trainer.train()
 
 
 if __name__ == "__main__":
@@ -109,7 +106,7 @@ if __name__ == "__main__":
             val_loader = build_detection_test_loader(
                 self.cfg,
                 self.cfg.DATASETS.TEST[0],
-                DatasetMapper(self.cfg, is_train=True),
+                DatasetMapper(self.cfg, is_train=False),
             )
 
             hooks.insert(

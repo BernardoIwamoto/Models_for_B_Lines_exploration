@@ -1,5 +1,7 @@
 from pathlib import Path
 import json
+import os
+from src.polygon_rcnn.experiment_registry import timed_stage
 
 import numpy as np
 from pycocotools.coco import COCO
@@ -17,11 +19,14 @@ from src.polygon_rcnn.register_dataset import register_blines
 import torch
 
 
-MODEL_PATH = "output_faster_rcnn/model_best.pth"
+MODEL_PATH = os.environ.get("MODEL_PATH", "output_faster_rcnn/model_best.pth")
 
 DATASET = "blines_val"
 
-OUTPUT_DIR = Path("output_faster_rcnn/coco_eval")
+OUTPUT_DIR = Path(os.environ.get("EVAL_OUTPUT_DIR", "output_faster_rcnn/coco_eval"))
+if OUTPUT_DIR.exists():
+    raise FileExistsError(f"Refusing to overwrite evaluation artifacts: {OUTPUT_DIR}")
+OUTPUT_DIR.mkdir(parents=True)
 
 TASK = "bbox"
 
@@ -64,11 +69,12 @@ loader = build_detection_test_loader(
     DATASET,
 )
 
-results = DefaultTrainer.test(
-    cfg,
-    predictor.model,
-    evaluators=[evaluator],
-)
+with timed_stage(OUTPUT_DIR, "validation_inference_and_metrics_wall_seconds"):
+    results = DefaultTrainer.test(
+        cfg,
+        predictor.model,
+        evaluators=[evaluator],
+    )
 
 with open(OUTPUT_DIR / "results.json", "w") as f:
     json.dump(results, f, indent=4)

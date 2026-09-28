@@ -1,9 +1,13 @@
-from pathlib import Path
 
 from detectron2.engine import DefaultTrainer
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
-from detectron2.data import build_detection_test_loader, DatasetMapper
+from pathlib import Path
+from detectron2.data import (
+    DatasetMapper,
+    build_detection_test_loader,
+    build_detection_train_loader,
+)
 from detectron2.evaluation import COCOEvaluator, DatasetEvaluators
 from detectron2.utils.env import seed_all_rng
 import torch
@@ -13,6 +17,8 @@ import os
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
 from src.polygon_rcnn.evaluation.common.polygon_coco_evaluator import PolygonSegmEvaluator
+from src.polygon_rcnn.experiment_registry import prepare_run, save_detectron_config, timed_stage
+from src.polygon_rcnn.polygon_mapper import CanonicalPolygonDatasetMapper
 
 # Registers "PolygonVertexHead" into Detectron2's ROI_KEYPOINT_HEAD_REGISTRY as a
 # side effect of the @ROI_KEYPOINT_HEAD_REGISTRY.register() decorator -- must be
@@ -21,8 +27,6 @@ from src.polygon_rcnn.polygon_vertex_head import PolygonVertexHead  # noqa: F401
 
 
 SEED = int(os.environ.get("SEED", 0))
-
-OUTPUT_DIR = "./output_polygon_head" if SEED == 0 else f"./output_polygon_head_seed{SEED}"
 
 NUM_KEYPOINTS = 4
 
@@ -87,16 +91,10 @@ def main():
     # exact values here don't matter -- only that 4 of them exist.
     cfg.TEST.KEYPOINT_OKS_SIGMAS = [0.05] * NUM_KEYPOINTS
 
-    # Each polygon vertex is canonicalized by its own geometric role (topmost point
-    # first, then a consistent winding order -- see dataset.py), which a horizontal
-    # flip would silently invalidate: flipping mirrors the winding direction, so
-    # vertex slot 1 would mean "next point clockwise" for un-flipped samples and
-    # "next point counter-clockwise" for flipped ones, adding label noise Detectron2's
-    # stock keypoint-flip handling (built for named left/right body joints, not
-    # geometric roles) doesn't fix. Simplest safe fix: turn flip off for this run.
-    # This is a deliberate, disclosed protocol difference from Mask/Faster R-CNN,
-    # which train with Detectron2's default horizontal flip.
-    cfg.INPUT.RANDOM_FLIP = "none"
+    flip_mode = os.environ.get("POLYGON_FLIP", "none")
+    if flip_mode not in {"none", "canonical"}:
+        raise ValueError("POLYGON_FLIP must be 'none' or 'canonical'")
+    cfg.INPUT.RANDOM_FLIP = "horizontal" if flip_mode == "canonical" else "none"
 
     # Same optimization budget as train_mask_rcnn.py/train_faster_rcnn.py.
     cfg.SOLVER.IMS_PER_BATCH = 4
@@ -111,26 +109,35 @@ def main():
 
     cfg.SOLVER.CHECKPOINT_PERIOD = 100
 
-    cfg.OUTPUT_DIR = OUTPUT_DIR
+    cfg.OUTPUT_DIR = prepare_run(
+        "polygon_head", SEED,
+        {
+            "batch_size": cfg.SOLVER.IMS_PER_BATCH,
+            "learning_rate": cfg.SOLVER.BASE_LR,
+            "max_iter": cfg.SOLVER.MAX_ITER,
+        },
+        "segm_polygon/AP",
+    )
+    save_detectron_config(cfg.OUTPUT_DIR, cfg)
 
     resume = False
-
-    # Detectron2's metrics.json is append-only, so a fresh (non-resumed) run must
-    # clear it first or its log gets mixed with older runs (see train_mask_rcnn.py).
-    if not resume:
-        metrics_file = Path(cfg.OUTPUT_DIR) / "metrics.json"
-        if metrics_file.exists():
-            metrics_file.unlink()
 
     trainer = PolygonHeadTrainer(cfg)
 
     trainer.resume_or_load(resume=resume)
 
-    trainer.train()
+    with timed_stage(cfg.OUTPUT_DIR, "training_wall_seconds"):
+        trainer.train()
 
 
 if __name__ == "__main__":
     class PolygonHeadTrainer(DefaultTrainer):
+
+        @classmethod
+        def build_train_loader(cls, cfg):
+            return build_detection_train_loader(
+                cfg, mapper=CanonicalPolygonDatasetMapper(cfg, is_train=True)
+            )
 
         @classmethod
         def build_evaluator(cls, cfg, dataset_name, output_folder=None):
@@ -165,7 +172,7 @@ if __name__ == "__main__":
             val_loader = build_detection_test_loader(
                 self.cfg,
                 self.cfg.DATASETS.TEST[0],
-                DatasetMapper(self.cfg, is_train=True),
+                DatasetMapper(self.cfg, is_train=False),
             )
 
             hooks.insert(
