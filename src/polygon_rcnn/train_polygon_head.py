@@ -4,7 +4,6 @@ from detectron2.config import get_cfg
 from detectron2 import model_zoo
 from pathlib import Path
 from detectron2.data import (
-    DatasetMapper,
     build_detection_test_loader,
     build_detection_train_loader,
 )
@@ -15,7 +14,7 @@ import torch
 import os
 
 from src.polygon_rcnn.register_dataset import register_blines
-from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook
+from src.polygon_rcnn.evaluation.common.hooks import LossEvalHook, build_loss_eval_mapper
 from src.polygon_rcnn.evaluation.common.polygon_coco_evaluator import PolygonSegmEvaluator
 from src.polygon_rcnn.experiment_registry import prepare_run, save_detectron_config, timed_stage
 from src.polygon_rcnn.polygon_mapper import CanonicalPolygonDatasetMapper
@@ -172,7 +171,7 @@ if __name__ == "__main__":
             val_loader = build_detection_test_loader(
                 self.cfg,
                 self.cfg.DATASETS.TEST[0],
-                DatasetMapper(self.cfg, is_train=False),
+                build_loss_eval_mapper(self.cfg, CanonicalPolygonDatasetMapper),
             )
 
             hooks.insert(

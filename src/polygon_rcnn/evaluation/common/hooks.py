@@ -1,7 +1,24 @@
 import torch
 import numpy as np
 import detectron2.utils.comm as comm
+from detectron2.data import DatasetMapper, transforms as T
 from detectron2.engine.hooks import HookBase
+
+
+def build_loss_eval_mapper(cfg, mapper_class=DatasetMapper):
+    """Build an annotation-preserving mapper for validation-loss passes.
+
+    The regular inference mapper drops annotations, which is correct for AP
+    evaluation but makes a training-mode R-CNN unable to compute validation
+    losses. Use the inference resize with ``is_train=True`` so Detectron2 also
+    converts ground-truth boxes, masks, and keypoints into ``gt_instances``.
+    """
+    resize = T.ResizeShortestEdge(
+        cfg.INPUT.MIN_SIZE_TEST,
+        cfg.INPUT.MAX_SIZE_TEST,
+        "choice",
+    )
+    return mapper_class(cfg, is_train=True, augmentations=[resize])
 
 
 class LossEvalHook(HookBase):
