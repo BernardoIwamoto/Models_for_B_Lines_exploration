@@ -375,14 +375,16 @@
 
     A inspeção local confirmou 256 imagens de treino, 75 de validação com 115 linhas de
     anotações válidas, e 70 imagens de teste sem rótulos. Todas as linhas de validação
-    têm quatro vértices. No treino foram encontradas 358 linhas, mas duas têm cinco
-    vértices: linha 2 de
+    têm quatro vértices. No treino foram encontradas 358 linhas; duas linhas tinham
+    cinco vértices: linha 2 de
     \texttt{RT\_LOWER\_LAT\_LONG-15\_51\_16.txt} e linha 2 de
     \texttt{rt\_upper\_post\_long-22\_59\_57.txt}. O loader Detectron2 antigo descartava
     silenciosamente o quinto ponto, enquanto o conversor YOLO usava todos os pontos para
-    derivar a caixa. A nova validação compartilhada interrompe o treino diante desse
-    formato inválido. As anotações de origem devem ser corrigidas antes de treinar; não
-    se infere aqui qual vértice remover.
+    derivar a caixa. As linhas foram normalizadas para quatro vértices removendo o ponto
+    cuja exclusão minimiza a área do triângulo local removido. Em uma linha, isso altera
+    a área do polígono em 7,7%; na outra, em 0,04%. As linhas originais, os pontos
+    removidos e a regra estão em \texttt{docs/annotation\_corrections.json}. A alteração
+    é uma aproximação geométrica rastreável, não confirmação da intenção do anotador.
 
     O código anterior também continha diferenças entre os números publicados e os
     artefatos do workspace. O \texttt{metrics.json} disponível para a Polygon Head não
@@ -396,8 +398,8 @@
     a métrica/iteração selecionadas. Cada nova execução exige ID único e salva
     configuração, seed, versões de pacotes, commit e hashes dos rótulos e arquivos de
     código. Os tempos de treino e avaliação também são registrados. A loss de
-    validação usa mapper sem augmentation aleatória. O treino deve permanecer suspenso
-    até a validação das duas anotações fora do formato.
+    validação usa mapper sem augmentation aleatória. Rode a auditoria no servidor para
+    confirmar a cópia dos rótulos normalizados antes de treinar.
 
     Foram implementadas, mas ainda não treinadas, três parametrizações: a regressão
     histórica relativa ao canto da proposta; offsets centrados na caixa; e geometria
@@ -444,10 +446,10 @@
     \item O conjunto de teste continua sem labels locais. Nenhuma métrica de teste é
     reportada.
 
-    \item Duas anotações de treino têm cinco pontos, em desacordo com a especificação
-    de quatro vértices. Os loaders agora rejeitam essas linhas em vez de truncá-las de
-    maneiras diferentes. O usuário deve corrigir as fontes dessas anotações antes
-    de executar treinos.
+    \item Duas anotações de treino tinham cinco pontos. Elas foram reduzidas a quatro
+    pela remoção do vértice com menor triângulo local removido. Essa aproximação altera
+    uma das áreas em 7,7\%; consulte o registro e valide a decisão contra a fonte de
+    anotação antes de tratar a linha como ground truth confirmada.
 
     \item O artigo do dataset LUS-BALD descreve 401 imagens, PBBs e rótulos para treino e
     validação, com split de teste cego. Isso é compatível com as contagens locais, mas

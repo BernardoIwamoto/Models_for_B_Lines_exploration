@@ -1,0 +1,27 @@
+{
+  "method": "For each five-vertex polygon, remove the vertex whose removal creates the smallest local triangle area in pixel coordinates. This is a geometry-preserving four-vertex approximation, not recovery of the annotator's original intent.",
+  "corrections": [
+    {
+      "file": "data/train/labels/RT_LOWER_LAT_LONG-15_51_16.txt",
+      "line": 2,
+      "removed_vertex_1based": 4,
+      "removed_xy_normalized": [0.004938, 0.933210],
+      "removed_local_triangle_area_px2": 1427.0114,
+      "original_polygon_area_px2": 18616.9920,
+      "area_change_fraction": 0.076651,
+      "original_line": "0 0.209877 0.246753 0.306173 0.267161 0.037037 0.942486 0.004938 0.933210 0.014815 0.528757",
+      "normalized_line": "0 0.209877 0.246753 0.306173 0.267161 0.037037 0.942486 0.014815 0.528757"
+    },
+    {
+      "file": "data/train/labels/rt_upper_post_long-22_59_57.txt",
+      "line": 2,
+      "removed_vertex_1based": 2,
+      "removed_xy_normalized": [0.662708, 0.194286],
+      "removed_local_triangle_area_px2": 1.9998,
+      "original_polygon_area_px2": 5166.5137,
+      "area_change_fraction": 0.000387,
+      "original_line": "0 0.660333 0.194286 0.662708 0.194286 0.695962 0.182857 0.980998 0.825714 0.928741 0.860000",
+      "normalized_line": "0 0.660333 0.194286 0.695962 0.182857 0.980998 0.825714 0.928741 0.860000"
+    }
+  ]
+}
