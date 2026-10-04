@@ -1,28 +1,35 @@
-# Execução na SSH
+# Execução na Titan via SSH
 
-## 1. Copiar o pacote atualizado
+## 1. Atualizar a correção do loader sem mesclar branches
 
-No terminal local, transfira o pacote para o servidor:
-
-```bash
-scp /private/tmp/bline_research_changes.tar.gz USUARIO@HOST:/tmp/
-```
-
-Na SSH, rode:
+Publique no GitHub, a partir do Mac, o commit que contém a correção do loader. Na Titan,
+se `git pull --ff-only` falhar porque `main` e `origin/main` divergiram, não faça merge
+nem apague os diretórios `runs_*` para iniciar o treino. Atualize a referência do GitHub
+e copie para a árvore de trabalho somente os quatro arquivos corrigidos e `.gitignore`.
+Isso mantém as outras alterações locais no lugar:
 
 ```bash
 cd ~/Models_for_B_Lines_exploration
-tar -xzf /tmp/bline_research_changes.tar.gz -C .
-source .venv/bin/activate
+git fetch origin
+git status --short -- .gitignore \
+  src/polygon_rcnn/evaluation/common/hooks.py \
+  src/polygon_rcnn/train_mask_rcnn.py \
+  src/polygon_rcnn/train_faster_rcnn.py \
+  src/polygon_rcnn/train_polygon_head.py
+git restore --source=origin/main --worktree -- \
+  .gitignore \
+  src/polygon_rcnn/evaluation/common/hooks.py \
+  src/polygon_rcnn/train_mask_rcnn.py \
+  src/polygon_rcnn/train_faster_rcnn.py \
+  src/polygon_rcnn/train_polygon_head.py
+grep -n "build_loss_eval_mapper" \
+  src/polygon_rcnn/evaluation/common/hooks.py \
+  src/polygon_rcnn/train_mask_rcnn.py
 ```
 
-Troque `USUARIO` e `HOST` pelos dados da sua conexão SSH. Se o ambiente já estiver
-ativo, pule o `source`. Use uma pasta nova por rodada para não colidir com execuções
-anteriores; o exemplo de treino abaixo cria um nome com data e hora.
-
-O pacote inclui as duas anotações normalizadas e `docs/annotation_corrections.json`,
-que guarda as linhas originais. A simplificação altera a área de uma delas em 7,7%;
-confira essa aproximação com a anotação original antes de usar resultados em artigo.
+O `grep` deve mostrar a função e seu uso no Mask R-CNN. Antes de executar `git restore`,
+confira o resultado de `git status`: se qualquer um dos arquivos listados estiver
+modificado, preserve essa alteração antes de continuar.
 
 ## 2. Treinar os baselines
 
@@ -30,10 +37,27 @@ Este script valida o dataset, converte as caixas YOLO e roda Mask R-CNN, Faster 
 Polygon Head histórica e YOLOv11 com três seeds cada. Se a validação falhar, o script
 para antes de treinar.
 
+Abra uma sessão persistente:
+
 ```bash
-export RUNS_DIR="$PWD/runs_$(date +%Y%m%d_%H%M%S)"
-bash scripts/run_baselines.sh
+tmux new -As blines
 ```
+
+Dentro da sessão `tmux`, rode:
+
+```bash
+cd ~/Models_for_B_Lines_exploration
+source .venv/bin/activate
+export RUNS_DIR="$PWD/runs_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$RUNS_DIR"
+set -o pipefail
+bash scripts/run_baselines.sh 2>&1 | tee "$RUNS_DIR/baselines.log"
+```
+
+Para deixar treinando em segundo plano, pressione `Ctrl-b` e depois `d`. Para voltar
+ao processo, rode `tmux attach -t blines`. O `RUNS_DIR` novo evita colisões com
+experimentos anteriores; mantenha essa mesma variável na sessão para as etapas
+seguintes.
 
 ## 3. Rodar as novas ablações poligonais
 
@@ -41,11 +65,8 @@ Depois dos baselines, rode as representações centrada e estruturada, com abla�
 loss por vértice, IoU poligonal aproximada e área. Cada configuração usa três seeds.
 
 ```bash
-bash scripts/run_polygon_ablation.sh
+bash scripts/run_polygon_ablation.sh 2>&1 | tee "$RUNS_DIR/polygon_ablation.log"
 ```
-
-Para continuar a execução após desconectar da SSH, abra uma sessão `tmux` antes dos
-comandos de treino (`tmux new -s blines`); reconecte com `tmux attach -t blines`.
 
 ## 4. Selecionar checkpoints e avaliar
 
