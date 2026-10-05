@@ -90,8 +90,9 @@ bash scripts/run_polygon_ablation.sh 2>&1 | tee "$RUNS_DIR/polygon_ablation.log"
 
 Ao terminar cada suíte, o script seleciona o melhor checkpoint de cada run e executa
 a avaliação COCO em todos os seeds e variantes. Cada run recebe `eval/results.json`,
-`eval/metrics_summary.json` e gráficos das curvas; o agregado entre os três seeds fica
-em `$RUNS_DIR/aggregated_metrics.json`.
+`eval/metrics_summary.json` e gráficos das curvas. Os agregados entre os três seeds
+ficam em `$RUNS_DIR/aggregated_baselines_metrics.json` e
+`$RUNS_DIR/aggregated_polygon_ablations_metrics.json`, sem uma suíte sobrescrever a outra.
 
 O resumo inclui AP/AP50/AP75, precisão, recall e F1 por detecção. Precisão, recall e F1
 usam matching COCO na tarefa correspondente (bbox para Faster/YOLO e segmentação para

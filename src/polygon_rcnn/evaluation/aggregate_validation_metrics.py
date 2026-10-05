@@ -99,7 +99,7 @@ def aggregate(runs_dir, suite, seeds=(0, 1, 2)):
         "individual_runs": individual,
         "mean_and_sample_std_by_method": summary,
     }
-    output_path = runs_dir / "aggregated_metrics.json"
+    output_path = runs_dir / f"aggregated_{suite}_metrics.json"
     output_path.write_text(
         json.dumps(output, indent=2, allow_nan=False) + "\n", encoding="utf-8"
     )
