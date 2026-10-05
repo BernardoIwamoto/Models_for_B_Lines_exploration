@@ -109,6 +109,17 @@ Os resultados por detecção e imagem são comparáveis sob a definição acima.
 COCO de bbox e segmentação medem tarefas distintas e devem ser comparados dentro da
 mesma tarefa.
 
+Depois que os baselines e as ablações tiverem seus arquivos `eval/metrics_summary.json`,
+gere tabelas legíveis e gráficos comparativos sem repetir treinos nem inferências:
+
+```bash
+python -m src.polygon_rcnn.evaluation.build_metrics_report --runs-dir "$RUNS_DIR"
+```
+
+Os arquivos ficam em `$RUNS_DIR/reports/`: `metrics_comparison.md`, dois CSVs e gráficos
+PNG de presença por imagem, métricas por detecção e AP COCO por tarefa. Como `runs_*` é
+ignorado pelo Git, copie essa pasta da Titan via `scp` para abrir os gráficos no Mac.
+
 ## 5. Análise geométrica opcional
 
 Depois das avaliações, estes comandos analisam a geometria e comparam as variantes de
