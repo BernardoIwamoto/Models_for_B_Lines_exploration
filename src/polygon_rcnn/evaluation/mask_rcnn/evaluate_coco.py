@@ -3,7 +3,6 @@ import json
 import os
 from src.polygon_rcnn.experiment_registry import timed_stage
 
-import numpy as np
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
@@ -15,6 +14,7 @@ from detectron2.data import build_detection_test_loader
 from detectron2 import model_zoo
 
 from src.polygon_rcnn.register_dataset import register_blines
+from src.polygon_rcnn.evaluation.common.metrics_report import save_coco_metrics_report
 
 import torch
 
@@ -93,10 +93,6 @@ coco_eval.evaluate()
 coco_eval.accumulate()
 coco_eval.summarize()
 
-np.save(OUTPUT_DIR / "precision.npy", coco_eval.eval["precision"])
-np.save(OUTPUT_DIR / "recall.npy", coco_eval.eval["recall"])
-np.save(OUTPUT_DIR / "scores.npy", coco_eval.eval["scores"])
-np.save(OUTPUT_DIR / "iou_thresholds.npy", coco_eval.params.iouThrs)
-np.save(OUTPUT_DIR / "recall_thresholds.npy", coco_eval.params.recThrs)
+save_coco_metrics_report(coco_eval, OUTPUT_DIR, results)
 
 print(results)

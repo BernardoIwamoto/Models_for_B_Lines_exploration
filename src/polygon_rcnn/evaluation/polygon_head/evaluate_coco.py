@@ -15,6 +15,7 @@ from detectron2 import model_zoo
 
 from src.polygon_rcnn.register_dataset import register_blines
 from src.polygon_rcnn.experiment_registry import timed_stage
+from src.polygon_rcnn.evaluation.common.metrics_report import save_coco_metrics_report
 from src.polygon_rcnn.polygon_vertex_head import PolygonVertexHead  # noqa: F401
 
 import torch
@@ -126,12 +127,6 @@ coco_eval.evaluate()
 coco_eval.accumulate()
 coco_eval.summarize()
 
-np.save(OUTPUT_DIR / "precision.npy", coco_eval.eval["precision"])
-np.save(OUTPUT_DIR / "recall.npy", coco_eval.eval["recall"])
-np.save(OUTPUT_DIR / "scores.npy", coco_eval.eval["scores"])
-np.save(OUTPUT_DIR / "iou_thresholds.npy", coco_eval.params.iouThrs)
-np.save(OUTPUT_DIR / "recall_thresholds.npy", coco_eval.params.recThrs)
-
 # "segm_polygon" to keep it clearly distinct from Detectron2's native "bbox"/
 # "keypoints" entries already in `results`: this is a polygon rasterized through
 # COCOeval's own polygon-IoU handling, not a genuine per-pixel mask AP, even though
@@ -147,5 +142,7 @@ results["segm_polygon"] = {
 
 with open(OUTPUT_DIR / "results.json", "w") as f:
     json.dump(results, f, indent=4)
+
+save_coco_metrics_report(coco_eval, OUTPUT_DIR, results)
 
 print(results)

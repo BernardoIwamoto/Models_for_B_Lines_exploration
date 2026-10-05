@@ -10,6 +10,7 @@ from pycocotools.cocoeval import COCOeval
 from detectron2.data import DatasetCatalog
 
 from src.polygon_rcnn.register_dataset import register_blines
+from src.polygon_rcnn.evaluation.common.metrics_report import save_coco_metrics_report
 
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "runs/detect/output_yolo_detect/train/weights/best.pt")
@@ -88,11 +89,7 @@ def main():
     with open(OUTPUT_DIR / "results.json", "w") as f:
         json.dump(results, f, indent=4)
 
-    np.save(OUTPUT_DIR / "precision.npy", coco_eval.eval["precision"])
-    np.save(OUTPUT_DIR / "recall.npy", coco_eval.eval["recall"])
-    np.save(OUTPUT_DIR / "scores.npy", coco_eval.eval["scores"])
-    np.save(OUTPUT_DIR / "iou_thresholds.npy", coco_eval.params.iouThrs)
-    np.save(OUTPUT_DIR / "recall_thresholds.npy", coco_eval.params.recThrs)
+    save_coco_metrics_report(coco_eval, OUTPUT_DIR, results)
 
     print(results)
 

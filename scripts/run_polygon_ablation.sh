@@ -32,4 +32,6 @@ for seed in 0 1 2; do
     python -m src.polygon_rcnn.train_polygon_head
 done
 
+bash scripts/evaluate_runs.sh polygon_ablations
+
 echo "Ablações poligonais concluídas. Resultados em: $RUNS_DIR"
