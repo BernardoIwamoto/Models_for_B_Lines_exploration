@@ -14,6 +14,10 @@ fi
 
 evaluate_mask() {
   local experiment="$1"
+  if [[ -f "$RUNS_DIR/$experiment/eval/metrics_summary.json" ]]; then
+    echo "--- Já avaliado; reutilizando métricas: ${experiment} ---"
+    return
+  fi
   echo "--- Avaliando Mask R-CNN: ${experiment} ---"
   python -m src.polygon_rcnn.evaluation.common.select_best_checkpoint \
     "$RUNS_DIR/$experiment" segm/AP
@@ -24,6 +28,10 @@ evaluate_mask() {
 
 evaluate_faster() {
   local experiment="$1"
+  if [[ -f "$RUNS_DIR/$experiment/eval/metrics_summary.json" ]]; then
+    echo "--- Já avaliado; reutilizando métricas: ${experiment} ---"
+    return
+  fi
   echo "--- Avaliando Faster R-CNN: ${experiment} ---"
   python -m src.polygon_rcnn.evaluation.common.select_best_checkpoint \
     "$RUNS_DIR/$experiment" bbox/AP
@@ -35,6 +43,10 @@ evaluate_faster() {
 evaluate_yolo() {
   local experiment="$1"
   local gt_json="$2"
+  if [[ -f "$RUNS_DIR/$experiment/eval/metrics_summary.json" ]]; then
+    echo "--- Já avaliado; reutilizando métricas: ${experiment} ---"
+    return
+  fi
   echo "--- Avaliando YOLO: ${experiment} ---"
   GT_JSON="$gt_json" \
     MODEL_PATH="$RUNS_DIR/$experiment/weights/best.pt" \
@@ -46,6 +58,10 @@ evaluate_polygon() {
   local experiment="$1"
   local representation="$2"
   local loss="$3"
+  if [[ -f "$RUNS_DIR/$experiment/eval/metrics_summary.json" ]]; then
+    echo "--- Já avaliado; reutilizando métricas: ${experiment} ---"
+    return
+  fi
   echo "--- Avaliando Polygon Head: ${experiment} ---"
   python -m src.polygon_rcnn.evaluation.common.select_best_checkpoint \
     "$RUNS_DIR/$experiment" segm_polygon/AP

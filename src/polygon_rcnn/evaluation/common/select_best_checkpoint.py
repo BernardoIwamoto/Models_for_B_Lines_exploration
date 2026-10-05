@@ -41,8 +41,13 @@ def select_best_checkpoint(output_dir, metric="segm/AP", destination=None):
         output_dir / f"model_{best_iteration + 1:07d}.pth",
         output_dir / f"model_{best_iteration:07d}.pth",
     ]
-    if not any(p.exists() for p in candidates) and best_iteration + 1 == max(
-        r.get("iteration", -1) for r in rows
+    last_metrics_iteration = max(r.get("iteration", -1) for r in rows)
+    # Depending on the Detectron2 hook/checkpointer version, the final validation
+    # row can be recorded as MAX_ITER or MAX_ITER - 1. Both refer to the final
+    # model when there is no numbered checkpoint for that row.
+    if (
+        not any(p.exists() for p in candidates)
+        and best_iteration in {last_metrics_iteration, last_metrics_iteration - 1}
     ):
         candidates.insert(0, output_dir / "model_final.pth")
     checkpoint = next((p for p in candidates if p.exists()), None)
