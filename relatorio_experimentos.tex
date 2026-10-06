@@ -1,467 +1,265 @@
-    \documentclass[11pt]{article}
-
-    \usepackage[utf8]{inputenc}
-    \usepackage[T1]{fontenc}
-    \usepackage[brazilian]{babel}
-    \usepackage[a4paper,margin=2.5cm]{geometry}
-    \usepackage{graphicx}
-    \graphicspath{{latex_figures/}}
-    \usepackage{booktabs}
-    \usepackage{caption}
-    \usepackage{float}
-    \usepackage{hyperref}
-
-    \title{Segmentação Automática de B-Lines em Ultrassom Pulmonar: \\
-    Comparação de Arquiteturas e Representações de Saída}
-    \author{}
-    \date{28 de setembro de 2026}
-
-    \begin{document}
-
-    \maketitle
-
-    % ============================================================
-    \section{Contexto e Objetivo}
-    % ============================================================
-
-    O projeto estuda a segmentação automática de B-Lines em ultrassom pulmonar. A ideia
-    central não é apenas treinar um modelo, mas montar uma estrutura de experimentos que
-    permita comparar representações geométricas no mesmo dataset e split, registrando
-    as diferenças de framework, augmentation, checkpoint selection e avaliação.
-
-    As anotações originais estão no formato YOLO Polygon: cada B-Line é um quadrilátero
-    de 4 vértices (classe $x_1\ y_1\ x_2\ y_2\ x_3\ y_3\ x_4\ y_4$, coordenadas
-    normalizadas).
-
-    % ============================================================
-    \section{Dataset}
-    % ============================================================
-
-    O conjunto de treino tem 256 imagens. O conjunto de validação tem 75 imagens e 115
-    instâncias anotadas (1,53 B-Lines por imagem, em média). Existe ainda um conjunto de
-    teste com 70 imagens, mas sem rótulo até o momento.
-
-    Como o teste não tem anotação, todos os números reportados neste trabalho vêm do
-    conjunto de validação --- o mesmo usado para acompanhar o treino. Isso é discutido
-    na Seção~\ref{sec:limitacoes} como limitação.
-
-    % ============================================================
-    \section{Protocolo Experimental}
-    % ============================================================
-
-    Mask R-CNN, Faster R-CNN e Polygon Head usam backbone ResNet-50 com FPN e pesos
-    COCO no Detectron2. As execuções históricas usaram batch de 4, taxa de aprendizado
-    0,00025 e 2000 iterações, com avaliação e checkpoint a cada 100 iterações. Os
-    pipelines diferem em augmentations, head e métrica de seleção; por isso, os números
-    abaixo são preliminares e não representam protocolo idêntico. Um hook customizado
-    calculava loss de validação.
-
-    O YOLOv11 usa seu próprio protocolo de treino (framework Ultralytics), mas roda
-    sobre os mesmos splits e é avaliado com COCOeval. Seu framework, augmentations,
-    batch efetivo e seleção de checkpoint diferem dos pipelines Detectron2. O código
-    atual registra seeds e configuração, avalia a Polygon Head por `segm_polygon/AP` e
-    seleciona checkpoints pela métrica configurada para cada tarefa; os resultados
-    históricos ainda são single-run.
-
-    % ============================================================
-    \section{Mask R-CNN (baseline)}
-    \label{sec:maskrcnn}
-    % ============================================================
-
-    Arquitetura de referência do projeto: detecta a caixa delimitadora do objeto e
-    prevê uma máscara binária livre, pixel a pixel, para cada instância.
-
-    Duas observações relevantes surgiram na análise do treino. A primeira é overfitting:
-    a loss de treino cai continuamente até aproximadamente 0,28, mas a loss de validação
-    para de melhorar por volta da iteração 900--1400 (mínimo de 0,44) e volta a subir,
-    chegando a 0,51 na iteração final (Figura~\ref{fig:mask_loss}). A segunda,
-    consequência direta da primeira, é que o checkpoint final não é o melhor: o AP de
-    segmentação de validação atinge seu pico na iteração 1399 (40,61) e cai para 38,33
-    na iteração 2000 (Figura~\ref{fig:mask_ap}). Por isso passou-se a selecionar o
-    melhor checkpoint em vez de sempre usar o último --- essa mudança sozinha elevou o
-    AP de segmentação reportado de 36,7 para 40,6.
-
-    \begin{table}[H]
-    \centering
-    \caption{Resultados do Mask R-CNN no melhor checkpoint (iteração 1399).}
-    \begin{tabular}{lccc}
-    \toprule
-    Tarefa & AP & AP50 & AP75 \\
-    \midrule
-    Caixa delimitadora (bbox) & 54,1 & 88,8 & 57,6 \\
-    Segmentação (segm) & 40,6 & 83,6 & 33,0 \\
-    \bottomrule
-    \end{tabular}
-    \end{table}
-
-    Na análise por instância, com matching greedy um-para-um por confiança e IoU de
-    máscara de pelo menos 0,5: IoU médio de 0,52 (mediana 0,65), Dice médio de 0,61
-    (mediana 0,78), precisão média de 0,59, recall médio de 0,67 e confiança média de
-    0,91. No threshold otimizado na validação (0,875), o F1 chega a 0,82
-    (precisão de 0,81, recall de 0,83).
-
-    Vale registrar que, ao inspecionar as máscaras visualmente com o threshold padrão
-    (0,50), apareciam máscaras borradas e detecções extras (2,31 por imagem, contra
-    1,53 reais). Usando o threshold ótimo do próprio modelo, esse problema quase
-    desapareceu --- parte do que parecia ``modelo ruim'' era, na verdade, visualização
-    calibrada de forma inadequada. Como o threshold foi otimizado na validação, esse
-    F1 é exploratório e não uma estimativa independente de generalização.
-
-    \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.8\linewidth]{mask_rcnn/train_vs_val_loss.png}
-    \caption{Loss de treino vs.\ validação ao longo das 2000 iterações. A validação
-    para de melhorar por volta da iteração 1000 e volta a subir no final.}
-    \label{fig:mask_loss}
-    \end{figure}
-
-    \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.8\linewidth]{mask_rcnn/val_segm_ap.png}
-    \caption{AP de segmentação de validação ao longo do treino. O pico ocorre antes da
-    iteração final.}
-    \label{fig:mask_ap}
-    \end{figure}
-
-    \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.8\linewidth]{mask_rcnn/coco_pr_curves.png}
-    \caption{Curva Precisão--Recall oficial (COCOeval) para a tarefa de segmentação.}
-    \label{fig:mask_pr}
-    \end{figure}
-
-    \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.6\linewidth]{predictions/mask_rcnn_1646467410642.png}
-    \caption{Exemplo de predição (verde: anotação real; vermelho: máscara prevista).}
-    \label{fig:mask_pred}
-    \end{figure}
-
-    % ============================================================
-    \section{Faster R-CNN}
-    % ============================================================
-
-    Mesma espinha dorsal do Mask R-CNN, sem a etapa de máscara --- apenas detecta a
-    caixa delimitadora. O objetivo foi isolar a dificuldade de localizar a B-Line da
-    dificuldade de desenhar sua forma exata. Utiliza o mesmo dataset já registrado, sem
-    nenhuma conversão adicional.
-
-    \begin{table}[H]
-    \centering
-    \caption{Resultados do Faster R-CNN no melhor checkpoint.}
-    \begin{tabular}{lccc}
-    \toprule
-    AP & AP50 & AP75 & Melhor F1 (threshold) \\
-    \midrule
-    54,4 & 89,1 & 59,1 & 0,85 (0,53) \\
-    \bottomrule
-    \end{tabular}
-    \end{table}
-
-    \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.6\linewidth]{predictions/faster_rcnn_1646467410642.png}
-    \caption{Exemplo de predição do Faster R-CNN (verde: anotação real; vermelho: caixa
-    prevista).}
-    \label{fig:faster_pred}
-    \end{figure}
-
-    % ============================================================
-    \section{YOLOv11}
-    % ============================================================
-
-    Arquitetura \textit{one-stage}, de família diferente da R-CNN (Ultralytics), usada
-    para verificar se a dificuldade observada era específica dos modelos R-CNN.
-    Utilizou-se o \texttt{yolo11n} (variante nano), com o dataset convertido de
-    polígono para caixa a partir da mesma anotação original, treinado por 31 épocas ---
-    equivalente ao número de imagens vistas pelo protocolo dos R-CNN (2000 iterações
-    $\times$ 4 de batch / 256 imagens). Os hiperparâmetros de treino seguiram os padrões
-    do Ultralytics; não foram forçados os mesmos valores do Detectron2, pois transportar
-    hiperparâmetros de um framework para outro tende a prejudicar a convergência.
-
-    As predições foram exportadas para o formato COCO e avaliadas com o mesmo código
-    \texttt{pycocotools} utilizado nos demais modelos, não com a métrica nativa do
-    Ultralytics, para preservar a comparação justa.
-
-    \begin{table}[H]
-    \centering
-    \caption{Resultados do YOLOv11.}
-    \begin{tabular}{lccc}
-    \toprule
-    AP & AP50 & AP75 & Melhor F1 (threshold) \\
-    \midrule
-    56,5 & 87,6 & 61,8 & 0,82 (0,53) \\
-    \bottomrule
-    \end{tabular}
-    \end{table}
-
-    \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.6\linewidth]{predictions/yolo_1646467410642.png}
-    \caption{Exemplo de predição do YOLOv11 (verde: anotação real; vermelho: caixa
-    prevista).}
-    \label{fig:yolo_pred}
-    \end{figure}
-
-    % ============================================================
-    \section{Comparação entre os Três Modelos de Caixa}
-    % ============================================================
-
-    \begin{table}[H]
-    \centering
-    \caption{Comparação de AP entre Mask R-CNN (branch de caixa), Faster R-CNN e
-    YOLOv11.}
-    \begin{tabular}{lccc}
-    \toprule
-    Modelo & AP & AP50 & AP75 \\
-    \midrule
-    Mask R-CNN (caixa) & 54,1 & 88,8 & 57,6 \\
-    Faster R-CNN & 54,4 & 89,1 & 59,1 \\
-    YOLOv11 & 56,5 & 87,6 & 61,8 \\
-    \bottomrule
-    \end{tabular}
-    \end{table}
-
-    Os três modelos ficam num intervalo estreito, com cerca de 2,5 pontos de AP de
-    diferença entre o melhor e o pior. O YOLOv11 apresenta uma vantagem discreta, mais
-    visível no AP75 (localização mais precisa), mas não há diferença categórica entre
-    as arquiteturas nessa tarefa.
-
-    \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.7\linewidth]{comparison_ap.png}
-    \caption{Comparação de AP/AP50/AP75 entre Mask R-CNN, Faster R-CNN e YOLOv11.}
-    \label{fig:comparison}
-    \end{figure}
-
-    % ============================================================
-    \section{Polygon Head --- Primeira Tentativa (Heatmap)}
-    % ============================================================
-
-    Em vez de uma máscara livre, a proposta da Polygon Head é prever diretamente os 4
-    vértices do quadrilátero. Na primeira tentativa, reaproveitou-se a infraestrutura
-    de Keypoint R-CNN já disponível no Detectron2 (originalmente concebida para pose
-    humana, com 17 pontos), adaptada para 4 pontos --- cada vértice tratado como um
-    ponto-chave localizado por um mapa de calor espacial. A opção por reaproveitar essa
-    infraestrutura, em vez de implementar algo do zero, teve como objetivo evitar
-    reimplementar, sem GPU disponível para testes interativos, as partes mais
-    arriscadas: a transformação correta dos pontos quando a imagem sofre corte ou
-    espelhamento durante o treino.
-
-    \begin{table}[H]
-    \centering
-    \caption{Polygon Head, variante heatmap, em duas resoluções de mapa de calor.}
-    \begin{tabular}{lccccc}
-    \toprule
-    Configuração & AP & AP50 & AP75 & Melhor F1 & \% polígono inválido \\
-    \midrule
-    Resolução padrão & 15,0 & 37,1 & 11,9 & 0,49 & 6,7\% \\
-    Resolução dobrada & 3,8 & 10,8 & 2,7 & 0,25 & 20,4\% \\
-    \bottomrule
-    \end{tabular}
-    \end{table}
-
-    \noindent \textit{Polígono inválido}: os 4 vértices, conectados na ordem prevista,
-    formam uma figura que se autointersecciona --- não é um quadrilátero simples.
-
-    Aumentar a resolução do mapa de calor piorou o resultado em vez de melhorá-lo. Com
-    poucos dados (256 imagens) e poucas iterações, um alvo de classificação mais fino
-    é mais difícil de aprender, não mais fácil. Além disso, o heatmap trata os 4
-    vértices como classificações independentes entre si --- nada na arquitetura obriga
-    os pontos a formarem uma figura geometricamente coerente, o que explica a taxa de
-    autointersecção observada.
-
-    Para permitir comparação direta com o Mask R-CNN, o polígono previsto foi
-    convertido de volta em uma segmentação e avaliado pelo mesmo COCOeval utilizado na
-    baseline (métrica denominada \texttt{segm\_polygon}), tornando esse AP diretamente
-    comparável ao AP de segmentação da Seção~\ref{sec:maskrcnn}.
-
-    % ============================================================
-    \section{Polygon Head --- Regressão Direta de Vértice}
-    % ============================================================
-
-    Diante do resultado do mapa de calor, foi implementada uma cabeça com quatro
-    camadas convolucionais, \textit{pooling} global e duas camadas densas. Ela emite 8
-    valores (4 vértices $\times$ 2 coordenadas) por proposta. A loss histórica é
-    \textit{smooth-L1}. Esta implementação não prevê coordenadas absolutas da imagem:
-    cada vértice é codificado como offset relativo ao canto superior esquerdo da
-    proposta, normalizado por sua largura e altura. A nova variante centrada introduzida
-    no código atual usa a mesma caixa, mas offsets relativos ao centro.
-
-    \begin{table}[H]
-    \centering
-    \caption{Polygon Head, variante regressão direta, em três configurações.}
-    \begin{tabular}{lccccc}
-    \toprule
-    Configuração & AP & AP50 & AP75 & Melhor F1 & Recall@0,5 \\
-    \midrule
-    Sem restrição na saída (melhor) & 12,2 & 54,2 & 1,4 & 0,63 & 0,74 \\
-    Com sigmoid na saída & 4,3 & 22,9 & 0,1 & 0,37 & 0,42 \\
-    Com penalidade suave de escape & 8,2 & 35,3 & 0,1 & 0,46 & 0,55 \\
-    \bottomrule
-    \end{tabular}
-    \end{table}
-
-    Nas três variantes, a taxa de polígono autointersectado caiu para 0\% (contra
-    6,7--20,4\% do heatmap) --- a regressão direta resolve por completo esse problema
-    estrutural.
-
-    A versão sem restrição, apesar de superior às demais, produzia polígonos cerca de
-    20\% maiores que o real, e 88\% das predições apresentavam algum vértice fora da
-    própria caixa prevista, já que nada na arquitetura impedia isso. Duas correções
-    foram testadas. A primeira, uma função sigmoide forçando a saída entre 0 e 1,
-    piorou o resultado: os alvos reais concentram-se exatamente nos valores extremos
-    (0 e 1, pois a caixa é definida pelos próprios vértices), e é justamente nesse
-    ponto que o gradiente da sigmoide é menor --- o efeito foi travar o aprendizado em
-    vez de apenas limitar a saída. A segunda, uma penalidade suave que atua somente
-    quando o vértice ultrapassa o intervalo válido, também piorou o resultado, e de
-    forma reveladora: a taxa de vértices fora da caixa não se alterou (permaneceu em
-    torno de 88\%), evidenciando que esse comportamento nunca foi a causa do problema,
-    apenas um sintoma correlacionado.
-
-    Uma inspeção exploratória sugeriu inflação das caixas previstas. No repositório
-    auditado não havia uma análise salva que quantificasse o efeito por modelo, largura,
-    altura, centro, orientação, tamanho, confiança e imagem. A faixa de 12--16\% é,
-    portanto, uma hipótese preliminar, não um viés confirmado em todos os detectores.
-    A rotina de análise foi implementada; falta executá-la sobre predições associadas a
-    checkpoints identificáveis.
-
-    \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.6\linewidth]{predictions/polygon_head_1646467410642.png}
-    \caption{Exemplo de predição da Polygon Head, regressão direta (verde: anotação
-    real; vermelho: polígono previsto).}
-    \label{fig:polygon_pred}
-    \end{figure}
-
-    % ============================================================
-    \section{Resumo Geral}
-    % ============================================================
-
-    \begin{table}[H]
-    \centering
-    \caption{Comparação final entre todas as arquiteturas e representações testadas.}
-    \begin{tabular}{lccc}
-    \toprule
-    Modelo / Representação & AP & AP50 & AP75 \\
-    \midrule
-    Mask R-CNN --- segmentação (máscara) & 40,6 & 83,6 & 33,0 \\
-    Mask R-CNN --- caixa & 54,1 & 88,8 & 57,6 \\
-    Faster R-CNN --- caixa & 54,4 & 89,1 & 59,1 \\
-    YOLOv11 --- caixa & 56,5 & 87,6 & 61,8 \\
-    Polygon Head heatmap (melhor variante) & 15,0 & 37,1 & 11,9 \\
-    Polygon Head regressão direta (melhor) & 12,2 & 54,2 & 1,4 \\
-    \bottomrule
-    \end{tabular}
-    \end{table}
-
-    Nos resultados históricos, nenhuma das versões poligonais superou o Mask R-CNN com
-    máscara binária livre. A regressão relativa à proposta reduz autointerseções e
-    melhora AP50, recall e F1 frente ao heatmap, mas seu AP75 permanece muito baixo.
-    Esses números são de execução única; ainda não demonstram estabilidade entre seeds.
-    O resumo salvo no workspace corresponde à variante com penalidade (AP 8,18), não à
-    variante sem restrição (AP 12,2) destacada na tabela. Assim, até reconciliar modelo,
-    checkpoint e predições, a tabela deve ser lida como registro dos resultados
-    históricos do relatório, e não como uma reprodução confirmada pelos artefatos locais.
-    As causas possíveis incluem: a máscara herda conhecimento de pré-treino no COCO,
-    enquanto a cabeça poligonal aprende a regressão
-    com poucas imagens; a máscara recebe supervisão densa, enquanto a regressão usa um
-    vetor compacto; e as caixas previstas podem introduzir erro na parametrização.
-
-    % ============================================================
-    \section{Auditoria do dataset, código e artefatos (28/09/2026)}
-    \label{sec:auditoria}
-    % ============================================================
-
-    A inspeção local confirmou 256 imagens de treino, 75 de validação com 115 linhas de
-    anotações válidas, e 70 imagens de teste sem rótulos. Todas as linhas de validação
-    têm quatro vértices. No treino foram encontradas 358 linhas; duas linhas tinham
-    cinco vértices: linha 2 de
-    \texttt{RT\_LOWER\_LAT\_LONG-15\_51\_16.txt} e linha 2 de
-    \texttt{rt\_upper\_post\_long-22\_59\_57.txt}. O loader Detectron2 antigo descartava
-    silenciosamente o quinto ponto, enquanto o conversor YOLO usava todos os pontos para
-    derivar a caixa. As linhas foram normalizadas para quatro vértices removendo o ponto
-    cuja exclusão minimiza a área do triângulo local removido. Em uma linha, isso altera
-    a área do polígono em 7,7%; na outra, em 0,04%. As linhas originais, os pontos
-    removidos e a regra estão em \texttt{docs/annotation\_corrections.json}. A alteração
-    é uma aproximação geométrica rastreável, não confirmação da intenção do anotador.
-
-    O código anterior também continha diferenças entre os números publicados e os
-    artefatos do workspace. O \texttt{metrics.json} disponível para a Polygon Head não
-    registra \texttt{segm\_polygon/AP}, embora essa métrica esteja agora no avaliador
-    periódico. O arquivo de resumo poligonal salvo corresponde aos valores da variante
-    com penalidade de escape (AP 8,18; AP50 35,32; AP75 0,10), não à variante sem
-    restrição (12,2; 54,2; 1,4). Não havia checkpoints locais para resolver a divergência.
-
-    A seleção de checkpoints foi corrigida para mapear a iteração de validação 0-based
-    ao nome do checkpoint Detectron2, preservar os checkpoints intermediários e gravar
-    a métrica/iteração selecionadas. Cada nova execução exige ID único e salva
-    configuração, seed, versões de pacotes, commit e hashes dos rótulos e arquivos de
-    código. Os tempos de treino e avaliação também são registrados. A loss de
-    validação usa mapper sem augmentation aleatória. Rode a auditoria no servidor para
-    confirmar a cópia dos rótulos normalizados antes de treinar.
-
-    Foram implementadas, mas ainda não treinadas, três parametrizações: a regressão
-    histórica relativa ao canto da proposta; offsets centrados na caixa; e geometria
-    estruturada com centro, orientação por $(\cos 2\theta,\sin 2\theta)$, comprimento e
-    larguras nas extremidades. A loss suporta vértices e uma aproximação rasterizada
-    diferenciável de IoU, com loss de área opcional. Essa aproximação é uma loss de
-    treinamento em grade, não substitui o COCOeval nem corresponde a IoU poligonal
-    analítico. Uma representação de origem auxiliar ainda não foi implementada: as
-    anotações atuais não marcam explicitamente a origem pleural e inferi-la da forma
-    do quadrilátero seria introduzir labels sem validação.
-
-    A rotina de matching geométrico usa associação greedy por confiança e bbox IoU
-    $\geq 0,5$ para todos os modelos; as métricas de forma são condicionais a essa
-    associação. Foi adicionado bootstrap pareado por imagem para AP, AP50 e AP75. Ainda
-    faltam treinos e avaliações remotos para produzir intervalos, curvas e figuras da
-    nova rodada. Resultados históricos devem ser mantidos separados das reproduções.
-
-    % ============================================================
-    \section{Limitações e Trabalhos Futuros}
-    \label{sec:limitacoes}
-    % ============================================================
-
-    \begin{itemize}
-    \item Cada resultado publicado foi obtido em uma única execução. Ainda não há
-    médias/desvios entre seeds nem intervalos de confiança. O código agora suporta
-    seeds e bootstrap por imagem, mas essas execuções ainda precisam ser feitas na
-    máquina de treinamento.
-
-    \item As escolhas históricas de checkpoint nem sempre foram alinhadas à tarefa
-    final. O código atual avalia \texttt{segm\_polygon/AP} durante treino poligonal e
-    seleciona bbox AP, segm AP ou segm\_polygon AP segundo o modelo. Os logs históricos
-    da Polygon Head não contêm a métrica poligonal periódica; portanto, a seleção
-    daquele resultado não pode ser confirmada pelos logs preservados.
-
-    \item A Polygon Head histórica treinou sem flip horizontal; Mask R-CNN e Faster
-    R-CNN usaram o flip padrão do Detectron2. O código agora oferece uma opção de flip
-    com reordenação canônica, ainda sem resultados. O YOLO conserva augmentations do
-    Ultralytics, que também diferem das do Detectron2.
-
-    \item \texttt{segm\_polygon} é COCOeval de segmentação aplicado a polígonos; não é
-    uma máscara prevista pixel a pixel. A tarefa e a representação devem permanecer
-    explícitas ao interpretar a tabela.
-
-    \item O conjunto de teste continua sem labels locais. Nenhuma métrica de teste é
-    reportada.
-
-    \item Duas anotações de treino tinham cinco pontos. Elas foram reduzidas a quatro
-    pela remoção do vértice com menor triângulo local removido. Essa aproximação altera
-    uma das áreas em 7,7\%; consulte o registro e valide a decisão contra a fonte de
-    anotação antes de tratar a linha como ground truth confirmada.
-
-    \item O artigo do dataset LUS-BALD descreve 401 imagens, PBBs e rótulos para treino e
-    validação, com split de teste cego. Isso é compatível com as contagens locais, mas
-    não confirma por si só que os arquivos locais são byte a byte a versão publicada.
-    O identificador IEEE fornecido para o artigo YOLO/PBB (11482811) não resolveu para
-    uma publicação sobre B-lines; o artigo YOLO-PBB encontrado nesta revisão é uma
-    publicação Frontiers de 2025. Resultados entre seus datasets e o split local não
-    são diretamente comparáveis.
-
-    \item O preprint arXiv:2510.11390 trata de interpretabilidade de LLMs médicos e
-    não tem relação metodológica substantiva com localização de B-lines; ele não deve
-    ser citado como metodologia ou trabalho relacionado desta pesquisa.
-    \end{itemize}
-
-    \end{document}
+\documentclass[10pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{graphicx}
+\graphicspath{{reports/}{latex_figures/}}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{rotating}
+\usepackage{array}
+\usepackage{hyperref}
+
+\title{Localização Automática de B-Lines em Ultrassom Pulmonar: \\
+Representações Geométricas, Supervisão e Ablações}
+\author{}
+\date{5 de outubro de 2026}
+
+\begin{document}
+\maketitle
+
+\section{Pergunta de pesquisa e escopo}
+
+Este estudo investiga como a representação geométrica e a supervisão afetam a
+localização de B-lines em ultrassom pulmonar com poucas anotações. A pergunta é
+mais específica que uma comparação geral de detectores: uma parametrização
+estruturada do quadrilátero e losses geométricas ajudam a superar as limitações
+da regressão independente de vértices?
+
+O dataset foi mantido como solicitado. Há 256 imagens de treino, 75 de validação
+com 115 instâncias e 70 imagens de teste sem rótulos. Portanto, todos os
+resultados abaixo são de validação; não há estimativa em teste independente.
+Cada instância anotada é um quadrilátero, convertido também em caixa ou máscara
+conforme a tarefa avaliada.
+
+\section{Protocolo e leitura dos resultados}
+
+Os resultados novos agregam três seeds por configuração. A tabela
+\ref{tab:resultados} apresenta média $\pm$ desvio-padrão amostral. COCO AP,
+precisão, recall e F1 estão em porcentagem. AP/AP50/AP75 vêm do COCOeval. P/R/F1
+por instância usam matching um-para-um na tarefa indicada, IoU $\geq 0{,}50$ e
+um limiar de confiança escolhido para maximizar F1 na validação. Esse F1 é
+descritivo e otimista como estimativa de generalização, pois o limiar foi
+escolhido nos mesmos dados.
+
+Os detectores Mask R-CNN, Faster R-CNN e Polygon Head usam Detectron2 com
+ResNet-50-FPN e pesos pré-treinados no COCO; os experimentos Detectron2 usam
+batch 4, taxa de aprendizado $2{,}5\times10^{-4}$ e 2.000 iterações, com
+avaliação/checkpoint a cada 100 iterações. YOLOv11n foi treinado pelo
+Ultralytics por 31 épocas, com seus padrões de otimizador e augmentations.
+Assim, a comparação entre famílias é informativa, mas não controla todas as
+diferenças de treinamento. Dentro das ablações poligonais, representação e loss
+são as variáveis de interesse; as quatro configurações também compartilham o
+mesmo protocolo e não usam flip horizontal.
+
+\begin{sidewaystable}[p]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\renewcommand{\arraystretch}{1.14}
+\caption{Resultados consolidados. Os resultados da rodada atual usam três seeds
+(média $\pm$ desvio-padrão). Registros históricos são execuções únicas e não
+foram reproduzidos nesta rodada. “Imagem” é acurácia/F1 de presença de ao menos
+uma B-line.}
+\label{tab:resultados}
+\resizebox{\textheight}{!}{%
+\begin{tabular}{@{}p{2.7cm}p{3.0cm}cclccccl@{}}
+\toprule
+Método / configuração & Representação e supervisão & $n$ & Tarefa & AP & AP50 & AP75 & P/R/F1 instância & Imagem: Acc/F1 & Inválido \\
+\midrule
+Mask R-CNN & Máscara binária; COCO & 3 & segm & $42,88\pm0,70$ & $86,14\pm0,98$ & $35,98\pm1,09$ & $79,01\pm5,83/88,99\pm4,79/83,47\pm1,15$ & $97,78\pm2,04/98,87\pm1,04$ & -- \\
+Mask R-CNN & Caixa derivada; COCO & 3 & bbox & $56,12\pm1,74$ & $91,23\pm2,01$ & $59,89\pm4,13$ & -- & -- & -- \\
+Faster R-CNN & Caixa; COCO & 3 & bbox & $52,37\pm2,38$ & $87,95\pm1,72$ & $55,05\pm4,23$ & $82,96\pm1,85/85,80\pm1,33/84,33\pm0,41$ & $96,00\pm1,33/97,96\pm0,69$ & -- \\
+YOLOv11n & Caixa; COCO & 3 & bbox & $55,86\pm0,99$ & $85,26\pm2,14$ & $59,39\pm2,66$ & $79,20\pm3,32/81,74\pm3,98/80,45\pm3,63$ & $97,33\pm1,33/98,65\pm0,68$ & -- \\
+Polygon legacy & Vértices relativos ao canto da proposta; vertex loss & 3 & segm\_polygon & $14,36\pm0,73$ & $52,86\pm0,70$ & $1,63\pm0,44$ & $62,09\pm0,60/58,84\pm4,46/60,36\pm2,35$ & $93,78\pm2,78/96,77\pm1,49$ & n/m \\
+Polygon center & Vértices relativos ao centro da caixa; vertex loss & 3 & segm\_polygon & $14,63\pm1,01$ & $52,16\pm3,65$ & $1,66\pm0,43$ & $61,98\pm3,26/57,68\pm5,02/59,71\pm3,89$ & $92,89\pm2,04/96,31\pm1,10$ & n/m \\
+Polygon structured & Centro, eixo, comprimento e larguras; vertex loss & 3 & segm\_polygon & $18,57\pm1,54$ & $57,98\pm2,43$ & $2,08\pm1,09$ & $63,19\pm3,37/64,93\pm2,19/64,02\pm2,30$ & $94,22\pm2,78/97,01\pm1,46$ & n/m \\
+Polygon structured + IoU & Geometria estruturada; vertex + IoU suave & 3 & segm\_polygon & $17,82\pm2,01$ & $57,92\pm0,58$ & $5,87\pm3,10$ & $64,86\pm4,65/63,19\pm7,29/63,64\pm1,96$ & $92,89\pm6,58/96,23\pm3,61$ & n/m \\
+Polygon structured + IoU + área & Geometria estruturada; vertex + IoU suave + área & 3 & segm\_polygon & $20,15\pm2,44$ & $60,08\pm3,10$ & $5,26\pm2,11$ & $63,98\pm2,82/67,83\pm2,30/65,83\pm2,32$ & $96,89\pm0,77/98,42\pm0,40$ & n/m \\
+\midrule
+Mask R-CNN (histórico) & Máscara binária; execução anterior & 1 & segm & 40,6 & 83,6 & 33,0 & -- & -- & -- \\
+Mask R-CNN (histórico) & Caixa; execução anterior & 1 & bbox & 54,1 & 88,8 & 57,6 & -- & -- & -- \\
+Faster R-CNN (histórico) & Caixa; execução anterior & 1 & bbox & 54,4 & 89,1 & 59,1 & -- & -- & -- \\
+YOLOv11 (histórico) & Caixa; execução anterior & 1 & bbox & 56,5 & 87,6 & 61,8 & -- & -- & -- \\
+Polygon heatmap & Heatmap de vértices; resolução padrão & 1 & polígono & 15,0 & 37,1 & 11,9 & --/--/49 & -- & 6,7\% \\
+Polygon heatmap 2$\times$ & Heatmap de vértices; resolução dobrada & 1 & polígono & 3,8 & 10,8 & 2,7 & --/--/25 & -- & 20,4\% \\
+Polygon regressão direta & Offsets do canto da proposta; sem restrição & 1 & polígono & 12,2 & 54,2 & 1,4 & --/--/63 & -- & 0\% \\
+Polygon regressão + sigmoid & Offsets limitados por sigmoid & 1 & polígono & 4,3 & 22,9 & 0,1 & --/--/37 & -- & 0\% \\
+Polygon regressão + penalidade & Offsets; penalidade de escape da caixa & 1 & polígono & 8,2 & 35,3 & 0,1 & --/--/46 & -- & 0\% \\
+\bottomrule
+\end{tabular}
+}
+
+\vspace{3pt}
+\parbox{0.96\textheight}{\scriptsize
+P/R/F1 por instância estão na ordem precisão/recall/F1. “n/m” significa que a
+taxa de polígonos inválidos não foi incluída no relatório agregado desta rodada;
+não significa taxa zero. Para as linhas históricas poligonais, F1 foi preservado
+como porcentagem a partir do relatório anterior e não deve ser tratado como
+diretamente comparável ao protocolo atual. \texttt{segm\_polygon} aplica
+COCOeval de segmentação à região preenchida pelo quadrilátero previsto; não é a
+saída de uma máscara livre. “Imagem” tem precisão de 100\% em todas as
+configurações atuais porque as 75 imagens de validação contêm ao menos uma
+instância anotada. Nesse split, acurácia e recall de presença coincidem, e essa
+métrica não mede especificidade em imagens negativas.}
+\end{sidewaystable}
+
+\section{Interpretação das comparações}
+
+Entre os baselines atuais, Mask R-CNN teve AP de caixa $56{,}12\%$ e YOLOv11n
+$55{,}86\%$; Faster R-CNN teve $52{,}37\%$. Para segmentação livre, Mask R-CNN
+obteve AP $42{,}88\%$. Esses resultados dão contexto sobre localização por caixa
+e máscara, mas não são tarefas idênticas às previsões de quadriláteros.
+
+Nas ablações da Polygon Head, a configuração estruturada com vertex loss elevou
+o AP poligonal de $14{,}36\%$ (legacy) para $18{,}57\%$. Somar apenas a loss de
+IoU suave não aumentou o AP médio em relação à geometria estruturada com vertex
+loss ($17{,}82\%$), embora o AP75 médio tenha aumentado de $2{,}08\%$ para
+$5{,}87\%$. A configuração estruturada com IoU e área obteve o maior AP
+poligonal ($20{,}15\%$), maior AP50 ($60{,}08\%$) e maior F1 por instância
+($65{,}83\%$) entre as variantes poligonais atuais. O AP75 continuou baixo
+($5{,}26\%$), indicando dificuldade importante em localização com critério
+geométrico estrito. As diferenças são descritivas; três seeds e 75 imagens não
+estabelecem significância estatística ou superioridade generalizável.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{coco_ap_bbox.png}
+\caption{AP, AP50 e AP75 COCO para as tarefas de caixa. As variantes
+poligonais também emitem caixas, mas a pergunta principal das ablações é a
+qualidade da forma prevista.}
+\label{fig:bboxap}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{detection_metrics_bbox.png}
+\caption{Precisão, recall e F1 por instância para os detectores de caixa, com
+limiar escolhido na validação.}
+\label{fig:bboxprf1}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{coco_ap_segm.png}
+\caption{AP COCO de segmentação do Mask R-CNN, que prevê máscaras livres. A
+tarefa difere de \texttt{segm\_polygon}, mostrado na Figura~\ref{fig:polyap}.}
+\label{fig:maskap}
+\end{figure}
+
+A métrica principal das ablações é AP de segmentação calculado a partir dos
+quadriláteros preenchidos. Os AP de caixa das mesmas execuções estão nos CSVs
+gerados, mas foram omitidos da tabela principal para manter explícita a tarefa
+de saída que cada variante pretende resolver. AP de keypoints também foi gerado
+por compatibilidade da estrutura interna do Detectron2 e não representa uma
+métrica científica desta tarefa.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{coco_ap_segm_polygon.png}
+\caption{AP, AP50 e AP75 COCO para as variantes poligonais. As barras resumem as
+três seeds; consulte a tabela para média e desvio-padrão.}
+\label{fig:polyap}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{detection_metrics_segmentation.png}
+\caption{Precisão, recall e F1 por instância nas saídas de segmentação e
+poligonais, com limiar escolhido na validação.}
+\label{fig:prf1}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{image_presence_metrics.png}
+\caption{Métricas de presença por imagem. Como não há imagens negativas na
+validação, estas curvas não permitem avaliar especificidade.}
+\label{fig:presence}
+\end{figure}
+
+\section{O que a proposta inicial já implementou}
+
+\subsection{Implementado e executado nesta rodada}
+
+\begin{itemize}
+  \item Baselines de Mask R-CNN, Faster R-CNN e YOLOv11n, além da Polygon Head
+  legacy, em três seeds; quatro configurações poligonais também foram executadas
+  em três seeds.
+  \item Parametrização legacy relativa ao canto da proposta, offsets relativos
+  ao centro da caixa e parametrização estruturada. A estruturada prediz centro,
+  eixo por $(\cos 2\theta,\sin 2\theta)$, comprimento e larguras nas duas
+  extremidades, com reconstrução determinística de quadrilátero.
+  \item Ablações de vertex loss, aproximação rasterizada diferenciável de IoU
+  poligonal e termo relativo de área. A loss de IoU usa grade fixa de $32\times32$
+  e é uma aproximação de treinamento; a avaliação continua usando COCOeval.
+  \item Seleção de checkpoint alinhada à tarefa, métricas COCO e métricas
+  thresholdizadas de precisão, recall e F1, além de métricas de presença por
+  imagem. Os resultados foram consolidados em CSV, Markdown e figuras.
+\end{itemize}
+
+\subsection{Implementado no código, mas ainda sem análise/resultados nesta rodada}
+
+\begin{itemize}
+  \item A rotina de análise de viés das caixas pode medir diferenças entre
+  caixas previstas e anotadas. O relatório atual não contém sua saída; portanto,
+  a hipótese histórica de caixas 12--16\% maiores permanece sem confirmação
+  quantitativa nesta rodada.
+  \item Há métricas geométricas para erro de vértices, IoU de polígonos, área,
+  orientação, comprimento/largura, polígonos inválidos e categorias de erro.
+  Também há matching implementado, mas não foram incluídos resultados dessas
+  análises no pacote copiado para \texttt{reports/}.
+  \item Existe bootstrap pareado por imagem para intervalos de confiança de AP e
+  diferenças entre modelos. Ainda não foi executado; média e desvio entre seeds
+  não substituem intervalo de confiança por imagem.
+  \item O pipeline permite flip horizontal com reordenação canônica dos vértices,
+  mas os treinos reportados usaram \texttt{POLYGON\_FLIP=none}. Essa ablação não
+  foi feita.
+\end{itemize}
+
+\subsection{Ainda não implementado ou sem rótulos para testar}
+
+Uma loss de forma/boundary-aware dedicada não foi implementada. A loss de IoU
+suave e o termo de área são supervisões geométricas iniciais, mas não equivalem
+a uma loss explícita de contorno. A tarefa auxiliar de localizar a origem
+pleural também não foi implementada: as anotações disponíveis não marcam essa
+origem e inferi-la automaticamente criaria alvos não validados. Para testar essa
+hipótese, seria necessário anotar a origem em um subconjunto e definir seu
+protocolo de avaliação.
+
+\section{Limitações e próximos passos}
+
+Os achados apoiam a hipótese de que uma parametrização estruturada é promissora
+para quadriláteros de B-lines, mas não mostram que ela já supera máscaras ou
+detectores de caixa em uma comparação equivalente. Persistem as seguintes
+limitações:
+
+\begin{itemize}
+  \item Validação pequena usada para seleção de checkpoint e limiar; conjunto de
+  teste ainda sem anotações. Não reportar os números como desempenho de teste.
+  \item Somente três seeds por configuração; ainda faltam intervalos de
+  confiança por imagem e análise pareada.
+  \item As duas linhas de treino que continham cinco vértices foram convertidas
+  para quatro removendo o vértice cuja remoção minimiza a área do triângulo local.
+  A regra e os valores originais estão em
+  \texttt{docs/annotation\_corrections.json}; uma conversão altera a área em
+  7,7\%. É uma aproximação rastreável, não confirmação da intenção do anotador.
+  \item O split de validação não tem imagens negativas; métricas de presença
+  positivas não medem rejeição de falsos positivos em exames sem B-lines.
+  \item A comparação entre Detectron2 e YOLO não iguala framework, augmentations
+  e hiperparâmetros. A interpretação mais controlada é a comparação interna das
+  ablações poligonais.
+\end{itemize}
+
+Para fechar a investigação sem novo treinamento, a próxima análise útil é rodar
+nas predições já existentes a auditoria de viés de bbox, as métricas geométricas
+e o bootstrap pareado, preservando os checkpoints e identificadores de cada
+seed. Depois, vale planejar a avaliação em teste quando houver rótulos e, se a
+hipótese de origem pleural continuar central, anotar um subconjunto com protocolo
+definido. Os comandos para as análises geométricas e bootstrap estão em
+\texttt{docs/REMOTE\_RUNBOOK.md}.
+
+\end{document}

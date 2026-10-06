@@ -120,18 +120,48 @@ Os arquivos ficam em `$RUNS_DIR/reports/`: `metrics_comparison.md`, dois CSVs e 
 PNG de presença por imagem, métricas por detecção e AP COCO por tarefa. Como `runs_*` é
 ignorado pelo Git, copie essa pasta da Titan via `scp` para abrir os gráficos no Mac.
 
-## 5. Análise geométrica opcional
+## 5. Análises adicionais sem novo treinamento
 
-Depois das avaliações, estes comandos analisam a geometria e comparam as variantes de
-polígono no seed 0:
+Rode depois que a avaliação tiver gerado os arquivos `coco_instances_results*.json`.
+Os exemplos abaixo usam seed 0 para reduzir o custo; para relatar a análise geométrica
+como resultado final, repita nos seeds 1 e 2 e agregue por seed.
 
-Análise geométrica e bootstrap pareado por imagem:
+Métricas geométricas das cinco variantes poligonais (inclui matching por bbox IoU
+`>= 0.50`, erro de vértices, IoU/área/orientação e polígonos inválidos):
 
 ```bash
-python -m src.polygon_rcnn.evaluation.geometry_metrics --gt "$RUNS_DIR/polygon_legacy_s0/eval/blines_val_coco_format.json" --predictions "$RUNS_DIR/polygon_legacy_s0/eval/coco_instances_results_polygon.json" --output "$RUNS_DIR/polygon_legacy_s0/geometry"
-python -m src.polygon_rcnn.evaluation.bootstrap_coco --gt "$RUNS_DIR/faster_bbox_s0/eval/blines_val_coco_format.json" --prediction legacy="$RUNS_DIR/polygon_legacy_s0/eval/coco_instances_results_polygon.json" --prediction structured="$RUNS_DIR/polygon_struct_s0/eval/coco_instances_results_polygon.json" --task segm --replicates 1000 --seed 0 --output "$RUNS_DIR/bootstrap_segmentation.json"
+for model in polygon_legacy polygon_center polygon_struct polygon_struct_iou polygon_struct_iou_area; do
+  python -m src.polygon_rcnn.evaluation.geometry_metrics \
+    --gt "$RUNS_DIR/${model}_s0/eval/blines_val_coco_format.json" \
+    --predictions "$RUNS_DIR/${model}_s0/eval/coco_instances_results_polygon.json" \
+    --output "$RUNS_DIR/${model}_s0/geometry"
+done
 ```
 
-Bootstrap intervals are conditional on fixed predictions and do not include
-between-seed training uncertainty. Keep those intervals separate from mean and sample
-standard deviation across seeds.
+Viés das caixas dos três detectores baselines, com o mesmo conjunto de validação:
+
+```bash
+python -m src.polygon_rcnn.evaluation.common.bbox_bias_analysis "$RUNS_DIR/mask_bbox_s0/eval/blines_val_coco_format.json" "$RUNS_DIR/mask_bbox_s0/eval/coco_instances_results.json" "$RUNS_DIR/mask_bbox_s0/bbox_bias"
+python -m src.polygon_rcnn.evaluation.common.bbox_bias_analysis "$RUNS_DIR/faster_bbox_s0/eval/blines_val_coco_format.json" "$RUNS_DIR/faster_bbox_s0/eval/coco_instances_results.json" "$RUNS_DIR/faster_bbox_s0/bbox_bias"
+python -m src.polygon_rcnn.evaluation.common.bbox_bias_analysis "$RUNS_DIR/yolo11n_bbox_s0/eval/blines_val_coco_format.json" "$RUNS_DIR/yolo11n_bbox_s0/eval/coco_instances_results.json" "$RUNS_DIR/yolo11n_bbox_s0/bbox_bias"
+```
+
+Bootstrap pareado por imagem para AP, AP50 e AP75 das variantes poligonais, usando as
+mesmas reamostragens para cada método:
+
+```bash
+python -m src.polygon_rcnn.evaluation.bootstrap_coco \
+  --gt "$RUNS_DIR/polygon_legacy_s0/eval/blines_val_coco_format.json" \
+  --prediction legacy="$RUNS_DIR/polygon_legacy_s0/eval/coco_instances_results_polygon.json" \
+  --prediction center="$RUNS_DIR/polygon_center_s0/eval/coco_instances_results_polygon.json" \
+  --prediction structured="$RUNS_DIR/polygon_struct_s0/eval/coco_instances_results_polygon.json" \
+  --prediction structured_iou="$RUNS_DIR/polygon_struct_iou_s0/eval/coco_instances_results_polygon.json" \
+  --prediction structured_iou_area="$RUNS_DIR/polygon_struct_iou_area_s0/eval/coco_instances_results_polygon.json" \
+  --task segm --replicates 1000 --seed 0 \
+  --output "$RUNS_DIR/bootstrap_polygon_seed0.json"
+```
+
+Os intervalos bootstrap são condicionais às predições/checkpoints fixos; não incluem
+incerteza entre seeds. Para a comparação com baselines de máscara ou caixa, use os
+arquivos de predição da tarefa correspondente e a mesma amostra pareada. Mantenha
+esses intervalos separados da média e do desvio-padrão entre seeds.

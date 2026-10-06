@@ -1,0 +1,20 @@
+{
+  "runs_dir": "/home/bernardo_melo/Models_for_B_Lines_exploration/runs_20261004_002844",
+  "suites": [
+    "baselines",
+    "polygon_ablations"
+  ],
+  "files": [
+    "metrics_comparison.md",
+    "metrics_mean_std.csv",
+    "metrics_per_seed.csv",
+    "image_presence_metrics.png",
+    "detection_metrics_bbox.png",
+    "detection_metrics_segmentation.png",
+    "coco_ap_bbox.png",
+    "coco_ap_keypoints.png",
+    "coco_ap_segm.png",
+    "coco_ap_segm_polygon.png"
+  ],
+  "metric_scale_note": "COCO AP and rate metrics are expressed in percent in CSV/Markdown; confidence thresholds remain 0-1."
+}
