@@ -175,6 +175,7 @@ dmypy.json
 # Immutable training/evaluation runs (large logs and checkpoints)
 runs/
 runs_*/
+anotacao/
 
 # Pyre type checker
 .pyre/
