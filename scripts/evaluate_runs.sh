@@ -7,8 +7,8 @@ if [[ -z "${RUNS_DIR:-}" ]]; then
 fi
 
 MODE="${1:-}"
-if [[ "$MODE" != "baselines" && "$MODE" != "polygon_ablations" ]]; then
-  echo 'Uso: bash scripts/evaluate_runs.sh baselines|polygon_ablations' >&2
+if [[ "$MODE" != "baselines" && "$MODE" != "polygon_ablations" && "$MODE" != "preprocessing_ablation" ]]; then
+  echo 'Uso: bash scripts/evaluate_runs.sh baselines|polygon_ablations|preprocessing_ablation' >&2
   exit 2
 fi
 
@@ -81,12 +81,23 @@ if [[ "$MODE" == "baselines" ]]; then
     evaluate_yolo "yolo11n_bbox_s${seed}" \
       "$RUNS_DIR/faster_bbox_s${seed}/eval/blines_val_coco_format.json"
   done
-else
+elif [[ "$MODE" == "polygon_ablations" ]]; then
   for seed in 0 1 2; do
     evaluate_polygon "polygon_center_s${seed}" center_relative vertex
     evaluate_polygon "polygon_struct_s${seed}" structured vertex
     evaluate_polygon "polygon_struct_iou_s${seed}" structured vertex_iou
     evaluate_polygon "polygon_struct_iou_area_s${seed}" structured vertex_iou_area
+  done
+else
+  if [[ -z "${PREPROCESSING_DATA_ROOT:-}" ]]; then
+    echo 'Defina PREPROCESSING_DATA_ROOT para avaliar os dados de cada variante.' >&2
+    exit 2
+  fi
+  for variant in clahe nlm unsharp canny nlm_clahe; do
+    for seed in 0 1 2; do
+      BLINES_DATA_ROOT="$PREPROCESSING_DATA_ROOT/$variant" \
+        evaluate_polygon "polygon_struct_iou_area_${variant}_s${seed}" structured vertex_iou_area
+    done
   done
 fi
 

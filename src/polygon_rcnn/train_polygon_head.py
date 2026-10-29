@@ -116,6 +116,7 @@ def main():
             "max_iter": cfg.SOLVER.MAX_ITER,
         },
         "segm_polygon/AP",
+        dataset_root=os.environ.get("BLINES_DATA_ROOT", "data"),
     )
     save_detectron_config(cfg.OUTPUT_DIR, cfg)
 

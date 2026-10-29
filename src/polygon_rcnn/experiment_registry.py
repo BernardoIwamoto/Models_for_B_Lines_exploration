@@ -63,6 +63,7 @@ def prepare_run(model, seed, config, selection_metric, *, dataset_root="data"):
         "backbone": "ResNet-50-FPN" if model != "yolo11n_bbox" else "YOLO11n",
         "pretrained_weights": os.environ.get("PRETRAINED_WEIGHTS", "COCO model-zoo / configured weights"),
         "dataset_root": str(dataset_root),
+        "image_preprocessing": os.environ.get("IMAGE_PREPROCESSING", "none"),
         "dataset_audit": audit["splits"],
         "label_sha256": label_hashes,
         "train_split": "train",

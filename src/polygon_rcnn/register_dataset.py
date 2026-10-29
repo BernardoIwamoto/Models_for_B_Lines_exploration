@@ -1,11 +1,12 @@
 from pathlib import Path
+import os
 
 from detectron2.data import DatasetCatalog, MetadataCatalog
 
 from src.polygon_rcnn.dataset import yolo_polygon_to_detectron
 
 
-DATA_ROOT = Path("data")
+DATA_ROOT = Path(os.environ.get("BLINES_DATA_ROOT", "data"))
 
 KEYPOINT_NAMES = ["v0", "v1", "v2", "v3"]
 

@@ -14,7 +14,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from src.polygon_rcnn.evaluation.aggregate_validation_metrics import (
-    SUITES,
     aggregate,
 )
 
@@ -287,7 +286,10 @@ def build_report(runs_dir: str | Path, out_dir: str | Path | None = None) -> Pat
     runs_dir = Path(runs_dir).expanduser().resolve()
     out_dir = Path(out_dir).expanduser().resolve() if out_dir else runs_dir / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    suites = {suite: _read_suite(runs_dir, suite) for suite in SUITES}
+    suites = {
+        suite: _read_suite(runs_dir, suite)
+        for suite in ("baselines", "polygon_ablations")
+    }
     markdown = _build_markdown(suites)
     (out_dir / "metrics_comparison.md").write_text(markdown + "\n", encoding="utf-8")
     _write_csvs(out_dir, suites)

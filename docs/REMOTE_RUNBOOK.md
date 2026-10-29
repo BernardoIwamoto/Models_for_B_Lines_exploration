@@ -86,6 +86,40 @@ loss por vértice, IoU poligonal aproximada e área. Cada configuração usa tr�
 bash scripts/run_polygon_ablation.sh 2>&1 | tee "$RUNS_DIR/polygon_ablation.log"
 ```
 
+## 3.1 Comparar pré-processamentos
+
+A suíte compara o controle estruturado com loss de vértice + IoU + área contra cinco
+variantes: CLAHE, NLM, unsharp masking, Canny e NLM seguido de CLAHE. Cada variante
+treina nos mesmos três seeds, mantendo arquitetura, loss, orçamento, divisões e
+anotações. Isso corresponde a 15 treinos sequenciais. O script cria cópias separadas
+dos dados em `data_preprocessed/`; não altera `data/` nem processa o conjunto de teste.
+`nlm_clahe` foi escolhido previamente como combinação: reduzir ruído antes de aumentar
+contraste local pode limitar a amplificação de speckle pelo CLAHE.
+
+A variante Canny implementa limiarização de Otsu, dilatação, blur Gaussiano, Canny,
+dilatação final e extração de contornos sobre a imagem original. O pseudocódigo citado parte de uma imagem já
+segmentada, então aqui Canny é uma ablação de entrada por bordas, não a mesma tarefa
+pós-segmentação descrita no artigo. Essa limitação fica registrada no dataset e no
+relatório final.
+
+Defina `REFERENCE_RUNS_DIR` como a pasta que contém as métricas avaliadas do controle
+sem pré-processamento `polygon_struct_iou_area_s0`, `_s1` e `_s2`. Rode dentro do tmux
+com o ambiente virtual ativo:
+
+```bash
+export RUNS_DIR="$PWD/runs_preprocessing_$(date +%Y%m%d_%H%M%S)"
+export REFERENCE_RUNS_DIR="$PWD/runs_YYYYMMDD_HHMMSS"
+mkdir -p "$RUNS_DIR"
+set -o pipefail
+bash scripts/run_preprocessing_ablation.sh 2>&1 | tee "$RUNS_DIR/preprocessing_ablation.log"
+```
+
+Troque `runs_YYYYMMDD_HHMMSS` pelo diretório real da rodada estruturada de referência.
+O script prepara dados, treina os 15 modelos em sequência, avalia todos e grava uma
+tabela CSV/Markdown/JSON e quatro gráficos comparativos em
+`$RUNS_DIR/reports/preprocessing_ablation/`. As métricas e curvas detalhadas de cada
+modelo ficam em `polygon_struct_iou_area_<variante>_sN/eval/`.
+
 ## 4. Arquivos de métricas
 
 Ao terminar cada suíte, o script seleciona o melhor checkpoint de cada run e executa

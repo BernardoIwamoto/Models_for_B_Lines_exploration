@@ -23,6 +23,13 @@ SUITES = {
         "polygon_struct_iou": "polygon_struct_iou_s{}",
         "polygon_struct_iou_area": "polygon_struct_iou_area_s{}",
     },
+    "preprocessing_ablation": {
+        "polygon_struct_iou_area_clahe": "polygon_struct_iou_area_clahe_s{}",
+        "polygon_struct_iou_area_nlm": "polygon_struct_iou_area_nlm_s{}",
+        "polygon_struct_iou_area_unsharp": "polygon_struct_iou_area_unsharp_s{}",
+        "polygon_struct_iou_area_canny": "polygon_struct_iou_area_canny_s{}",
+        "polygon_struct_iou_area_nlm_clahe": "polygon_struct_iou_area_nlm_clahe_s{}",
+    },
 }
 
 
