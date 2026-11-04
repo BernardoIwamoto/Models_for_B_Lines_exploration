@@ -120,6 +120,26 @@ tabela CSV/Markdown/JSON e quatro gráficos comparativos em
 `$RUNS_DIR/reports/preprocessing_ablation/`. As métricas e curvas detalhadas de cada
 modelo ficam em `polygon_struct_iou_area_<variante>_sN/eval/`.
 
+Se a execução parar por falta de espaço antes da etapa de avaliação, os runs completos
+podem ter `model_final.pth` e `metrics.json`, mas ainda nenhum `eval/metrics_summary.json`.
+O runner de recuperação avalia esses treinos, preserva o checkpoint selecionado e só
+então remove snapshots intermediários e `model_final.pth`. Runs sem `model_final.pth` são considerados
+interrompidos e refeitos. Antes de atualizar o código na Titan, libere espaço removendo
+os snapshots numerados apenas do run interrompido, depois use um RUNS_DIR novo e defina
+`PREVIOUS_RUNS_DIR` para a pasta anterior. Datasets processados existentes são validados
+e reutilizados; treinos completos são avaliados e os incompletos refeitos:
+
+```bash
+df -h "$PWD"
+export RUNS_DIR="$PWD/runs_preprocessing_recovery_$(date +%Y%m%d_%H%M%S)"
+export PREVIOUS_RUNS_DIR="$PWD/runs_preprocessing_YYYYMMDD_HHMMSS"
+mkdir -p "$RUNS_DIR"
+bash scripts/run_preprocessing_ablation.sh 2>&1 | tee "$RUNS_DIR/preprocessing_ablation.log"
+```
+
+Substitua `runs_preprocessing_YYYYMMDD_HHMMSS` pelo diretório anterior com resultados
+parciais. A comparação final é gerada na nova pasta de saída.
+
 ## 4. Arquivos de métricas
 
 Ao terminar cada suíte, o script seleciona o melhor checkpoint de cada run e executa

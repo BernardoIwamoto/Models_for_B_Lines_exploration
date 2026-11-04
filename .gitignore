@@ -237,3 +237,4 @@ output_polygon_head/
 data/yolo_detect/
 data_clahe/
 data_preprocessed/
+polygon_struct_iou_area_val/
