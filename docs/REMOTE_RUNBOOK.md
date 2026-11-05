@@ -180,6 +180,28 @@ Rode depois que a avaliação tiver gerado os arquivos `coco_instances_results*.
 Os exemplos abaixo usam seed 0 para reduzir o custo; para relatar a análise geométrica
 como resultado final, repita nos seeds 1 e 2 e agregue por seed.
 
+Varredura pós-hoc de confiança da Polygon Head original, de 0,50 a 0,85 em passos de
+0,05. Usa as predições COCO salvas para as três seeds, sem carregar pesos nem repetir
+inferência. Calcula precisão, recall e F1 de detecção com matching de polígonos em IoU
+0,50, além das métricas de presença por imagem:
+
+```bash
+export ORIGINAL_RUNS_DIR="$PWD/runs_20261004_002844"
+export THRESHOLD_REPORT_DIR="$PWD/reports/polygon_threshold_sweep_$(date +%Y%m%d_%H%M%S)"
+python -m src.polygon_rcnn.evaluation.polygon_head.sweep_confidence_thresholds \
+  --runs-dir "$ORIGINAL_RUNS_DIR" \
+  --run-prefix polygon_struct_iou_area \
+  --seeds 0 1 2 \
+  --start 0.50 --stop 0.85 --step 0.05 \
+  --output-dir "$THRESHOLD_REPORT_DIR"
+```
+
+O script exige `eval/blines_val_coco_format.json` e
+`eval/coco_instances_results_polygon.json` em cada seed. Os resultados ficam em
+`threshold_sweep_per_seed.csv`, `threshold_sweep_summary.csv`, `threshold_sweep.json`
+e `threshold_sweep.png`. A varredura serve para escolher um limiar de validação; para
+estimar desempenho final, aplique o limiar escolhido a um conjunto de teste independente.
+
 Métricas geométricas das cinco variantes poligonais (inclui matching por bbox IoU
 `>= 0.50`, erro de vértices, IoU/área/orientação e polígonos inválidos):
 
